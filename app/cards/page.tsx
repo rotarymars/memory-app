@@ -1,4 +1,6 @@
 import Link from "next/link";
+import { auth } from "@clerk/nextjs/server";
+import { redirect } from "next/navigation";
 import { listCards, listTagSummaries } from "@/lib/cards";
 import { deleteCardAction } from "@/app/actions";
 import {
@@ -13,11 +15,13 @@ export default async function CardsPage({
 }: {
   searchParams: Promise<{ tag?: string }>;
 }) {
+  const { userId } = await auth();
+  if (!userId) redirect("/sign-in");
   const { tag: rawTag } = await searchParams;
   const tag = rawTag && rawTag.length > 0 ? rawTag : null;
   const [cards, tags] = await Promise.all([
-    listCards(tag),
-    listTagSummaries(),
+    listCards(userId, tag),
+    listTagSummaries(userId),
   ]);
 
   return (

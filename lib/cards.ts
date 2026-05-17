@@ -9,6 +9,10 @@ function tagFilter(tag: string | null | undefined): SQL | undefined {
   return eq(cards.tag, tag);
 }
 
+function userFilter(userId: string): SQL {
+  return eq(cards.userId, userId);
+}
+
 function combineWhere(...parts: (SQL | undefined)[]): SQL | undefined {
   const present = parts.filter((p): p is SQL => p !== undefined);
   if (present.length === 0) return undefined;
@@ -16,27 +20,41 @@ function combineWhere(...parts: (SQL | undefined)[]): SQL | undefined {
   return and(...present);
 }
 
-export async function listCards(tag?: string | null): Promise<Card[]> {
-  const where = tagFilter(tag);
-  const q = db.select().from(cards).orderBy(desc(cards.createdAt));
-  return where ? q.where(where) : q;
+export async function listCards(
+  userId: string,
+  tag?: string | null
+): Promise<Card[]> {
+  const where = combineWhere(userFilter(userId), tagFilter(tag));
+  return db.select().from(cards).where(where!).orderBy(desc(cards.createdAt));
 }
 
-export async function getCard(id: number): Promise<Card | undefined> {
-  const rows = await db.select().from(cards).where(eq(cards.id, id)).limit(1);
+export async function getCard(
+  userId: string,
+  id: number
+): Promise<Card | undefined> {
+  const rows = await db
+    .select()
+    .from(cards)
+    .where(and(eq(cards.id, id), userFilter(userId)))
+    .limit(1);
   return rows[0];
 }
 
 export async function dueCards(
+  userId: string,
   options: { tag?: string | null; now?: Date } = {}
 ): Promise<Card[]> {
   const now = options.now ?? new Date();
-  const where = combineWhere(lte(cards.nextReviewAt, now), tagFilter(options.tag));
-  const q = db.select().from(cards).orderBy(asc(cards.nextReviewAt));
-  return where ? q.where(where) : q;
+  const where = combineWhere(
+    userFilter(userId),
+    lte(cards.nextReviewAt, now),
+    tagFilter(options.tag)
+  );
+  return db.select().from(cards).where(where!).orderBy(asc(cards.nextReviewAt));
 }
 
 export async function createCard(input: {
+  userId: string;
   front: string;
   back: string;
   tag?: string | null;
@@ -44,6 +62,7 @@ export async function createCard(input: {
   const [row] = await db
     .insert(cards)
     .values({
+      userId: input.userId,
       front: input.front,
       back: input.back,
       tag: input.tag ?? null,
@@ -53,6 +72,7 @@ export async function createCard(input: {
 }
 
 export async function updateCard(
+  userId: string,
   id: number,
   input: { front: string; back: string; tag?: string | null }
 ): Promise<Card | undefined> {
@@ -64,20 +84,23 @@ export async function updateCard(
       tag: input.tag ?? null,
       updatedAt: new Date(),
     })
-    .where(eq(cards.id, id))
+    .where(and(eq(cards.id, id), userFilter(userId)))
     .returning();
   return row;
 }
 
-export async function deleteCard(id: number): Promise<void> {
-  await db.delete(cards).where(eq(cards.id, id));
+export async function deleteCard(userId: string, id: number): Promise<void> {
+  await db
+    .delete(cards)
+    .where(and(eq(cards.id, id), userFilter(userId)));
 }
 
 export async function recordReview(
+  userId: string,
   id: number,
   outcome: ReviewOutcome
 ): Promise<Card | undefined> {
-  const card = await getCard(id);
+  const card = await getCard(userId, id);
   if (!card) return undefined;
 
   const now = new Date();
@@ -91,7 +114,7 @@ export async function recordReview(
       lastReviewedAt: now,
       updatedAt: now,
     })
-    .where(eq(cards.id, id))
+    .where(and(eq(cards.id, id), userFilter(userId)))
     .returning();
   return row;
 }
@@ -99,22 +122,25 @@ export async function recordReview(
 export type CardStats = {
   total: number;
   due: number;
-  learning: number; // level 0-2
-  mature: number; // level 3+
+  learning: number;
+  mature: number;
 };
 
 export async function cardStats(
+  userId: string,
   options: { tag?: string | null; now?: Date } = {}
 ): Promise<CardStats> {
   const now = options.now ?? new Date();
-  const where = tagFilter(options.tag);
-  const q = db.select({
-    total: sql<number>`count(*)::int`,
-    due: sql<number>`count(*) filter (where ${cards.nextReviewAt} <= ${now})::int`,
-    learning: sql<number>`count(*) filter (where ${cards.reviewLevel} < 3)::int`,
-    mature: sql<number>`count(*) filter (where ${cards.reviewLevel} >= 3)::int`,
-  }).from(cards);
-  const rows = where ? await q.where(where) : await q;
+  const where = combineWhere(userFilter(userId), tagFilter(options.tag));
+  const rows = await db
+    .select({
+      total: sql<number>`count(*)::int`,
+      due: sql<number>`count(*) filter (where ${cards.nextReviewAt} <= ${now})::int`,
+      learning: sql<number>`count(*) filter (where ${cards.reviewLevel} < 3)::int`,
+      mature: sql<number>`count(*) filter (where ${cards.reviewLevel} >= 3)::int`,
+    })
+    .from(cards)
+    .where(where!);
   return rows[0] ?? { total: 0, due: 0, learning: 0, mature: 0 };
 }
 
@@ -125,6 +151,7 @@ export type TagSummary = {
 };
 
 export async function listTagSummaries(
+  userId: string,
   now: Date = new Date()
 ): Promise<TagSummary[]> {
   const rows = await db
@@ -134,7 +161,12 @@ export async function listTagSummaries(
       due: sql<number>`count(*) filter (where ${cards.nextReviewAt} <= ${now})::int`,
     })
     .from(cards)
-    .where(sql`${cards.tag} is not null and ${cards.tag} <> ''`)
+    .where(
+      and(
+        userFilter(userId),
+        sql`${cards.tag} is not null and ${cards.tag} <> ''`
+      )
+    )
     .groupBy(cards.tag)
     .orderBy(asc(cards.tag));
 

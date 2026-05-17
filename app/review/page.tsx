@@ -1,4 +1,6 @@
 import Link from "next/link";
+import { auth } from "@clerk/nextjs/server";
+import { redirect } from "next/navigation";
 import { dueCards } from "@/lib/cards";
 import { ReviewSession } from "./ReviewSession";
 
@@ -9,9 +11,11 @@ export default async function ReviewPage({
 }: {
   searchParams: Promise<{ tag?: string }>;
 }) {
+  const { userId } = await auth();
+  if (!userId) redirect("/sign-in");
   const { tag: rawTag } = await searchParams;
   const tag = rawTag && rawTag.length > 0 ? rawTag : null;
-  const cards = await dueCards({ tag });
+  const cards = await dueCards(userId, { tag });
 
   if (cards.length === 0) {
     return (
