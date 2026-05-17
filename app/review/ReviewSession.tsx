@@ -19,8 +19,10 @@ type ReviewCard = {
 
 export function ReviewSession({
   initialCards,
+  tag,
 }: {
   initialCards: ReviewCard[];
+  tag?: string | null;
 }) {
   const [queue, setQueue] = useState(initialCards);
   const [index, setIndex] = useState(0);
@@ -99,6 +101,11 @@ export function ReviewSession({
     <div className="flex flex-col gap-6">
       <div className="flex items-center justify-between text-xs text-[var(--muted)]">
         <div className="flex items-center gap-2">
+          {tag && (
+            <span className="inline-flex items-center rounded-full bg-[var(--accent)]/10 px-2 py-0.5 font-medium text-[var(--accent)]">
+              {tag}
+            </span>
+          )}
           <span>
             {completed + 1} / {completed + remaining}
           </span>

@@ -1,10 +1,13 @@
 import Link from "next/link";
-import { cardStats } from "@/lib/cards";
+import { cardStats, listTagSummaries } from "@/lib/cards";
 
 export const dynamic = "force-dynamic";
 
 export default async function Home() {
-  const stats = await cardStats();
+  const [stats, tags] = await Promise.all([
+    cardStats(),
+    listTagSummaries(),
+  ]);
 
   return (
     <div className="flex flex-col gap-10">
@@ -39,6 +42,49 @@ export default async function Home() {
         <StatCard label="Mature" value={stats.mature} />
         <StatCard label="Total" value={stats.total} />
       </section>
+
+      {tags.length > 0 && (
+        <section className="flex flex-col gap-3">
+          <h2 className="text-sm font-semibold uppercase tracking-wider text-[var(--muted)]">
+            By tag
+          </h2>
+          <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+            {tags.map((t) => (
+              <li
+                key={t.tag}
+                className="flex items-center justify-between rounded-lg border border-[var(--border)] bg-[var(--card)] p-3"
+              >
+                <div className="flex items-center gap-3 min-w-0">
+                  <span className="truncate text-sm font-medium">
+                    {t.tag}
+                  </span>
+                  <span className="text-xs text-[var(--muted)] whitespace-nowrap">
+                    {t.due} due · {t.total} total
+                  </span>
+                </div>
+                <div className="flex shrink-0 items-center gap-1">
+                  <Link
+                    href={`/cards?tag=${encodeURIComponent(t.tag)}`}
+                    className="rounded-md px-2 py-1 text-xs text-[var(--muted)] hover:bg-black/[.04] hover:text-[var(--foreground)] dark:hover:bg-white/[.06]"
+                  >
+                    Browse
+                  </Link>
+                  <Link
+                    href={`/review?tag=${encodeURIComponent(t.tag)}`}
+                    className={`rounded-md px-2 py-1 text-xs font-medium ${
+                      t.due > 0
+                        ? "bg-[var(--accent)] text-[var(--accent-foreground)] hover:opacity-90"
+                        : "text-[var(--muted)] hover:bg-black/[.04] dark:hover:bg-white/[.06]"
+                    }`}
+                  >
+                    Review
+                  </Link>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
       <section className="rounded-lg border border-[var(--border)] bg-[var(--card)] p-6">
         <h2 className="text-sm font-semibold uppercase tracking-wider text-[var(--muted)]">

@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { listCards } from "@/lib/cards";
+import { listCards, listTagSummaries } from "@/lib/cards";
 import { deleteCardAction } from "@/app/actions";
 import {
   formatInterval,
@@ -8,13 +8,31 @@ import {
 
 export const dynamic = "force-dynamic";
 
-export default async function CardsPage() {
-  const cards = await listCards();
+export default async function CardsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ tag?: string }>;
+}) {
+  const { tag: rawTag } = await searchParams;
+  const tag = rawTag && rawTag.length > 0 ? rawTag : null;
+  const [cards, tags] = await Promise.all([
+    listCards(tag),
+    listTagSummaries(),
+  ]);
 
   return (
     <div className="flex flex-col gap-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold tracking-tight">All cards</h1>
+        <h1 className="text-2xl font-semibold tracking-tight">
+          {tag ? (
+            <>
+              Cards tagged{" "}
+              <span className="font-mono text-[var(--accent)]">{tag}</span>
+            </>
+          ) : (
+            "All cards"
+          )}
+        </h1>
         <Link
           href="/cards/new"
           className="inline-flex h-9 items-center rounded-md bg-[var(--accent)] px-3 text-sm font-medium text-[var(--accent-foreground)] hover:opacity-90"
@@ -23,14 +41,49 @@ export default async function CardsPage() {
         </Link>
       </div>
 
+      {tags.length > 0 && (
+        <div className="flex flex-wrap gap-2">
+          <FilterChip href="/cards" active={tag === null}>
+            All
+          </FilterChip>
+          {tags.map((t) => (
+            <FilterChip
+              key={t.tag}
+              href={`/cards?tag=${encodeURIComponent(t.tag)}`}
+              active={tag === t.tag}
+            >
+              {t.tag}{" "}
+              <span className="opacity-60">({t.total})</span>
+            </FilterChip>
+          ))}
+        </div>
+      )}
+
+      {tag && (
+        <div className="flex items-center justify-between rounded-md border border-[var(--accent)]/30 bg-[var(--accent)]/5 px-4 py-2 text-sm">
+          <span>
+            Showing only cards tagged{" "}
+            <span className="font-mono">{tag}</span>.
+          </span>
+          <Link
+            href={`/review?tag=${encodeURIComponent(tag)}`}
+            className="font-medium text-[var(--accent)] hover:underline"
+          >
+            Review this tag →
+          </Link>
+        </div>
+      )}
+
       {cards.length === 0 ? (
         <div className="rounded-lg border border-dashed border-[var(--border)] p-12 text-center">
-          <p className="text-[var(--muted)]">No cards yet.</p>
+          <p className="text-[var(--muted)]">
+            {tag ? `No cards with tag "${tag}".` : "No cards yet."}
+          </p>
           <Link
-            href="/cards/new"
+            href={tag ? "/cards" : "/cards/new"}
             className="mt-3 inline-flex items-center text-sm font-medium text-[var(--accent)] hover:underline"
           >
-            Create your first one →
+            {tag ? "Clear filter →" : "Create your first one →"}
           </Link>
         </div>
       ) : (
@@ -56,9 +109,12 @@ export default async function CardsPage() {
                         L{card.reviewLevel} · {formatInterval(interval)}
                       </span>
                       {card.tag && (
-                        <span className="rounded-full bg-black/[.04] px-2 py-0.5 dark:bg-white/[.06]">
+                        <Link
+                          href={`/cards?tag=${encodeURIComponent(card.tag)}`}
+                          className="rounded-full bg-black/[.04] px-2 py-0.5 hover:bg-[var(--accent)]/10 hover:text-[var(--accent)] dark:bg-white/[.06]"
+                        >
                           {card.tag}
-                        </span>
+                        </Link>
                       )}
                       <span>
                         {isDue
@@ -97,5 +153,28 @@ export default async function CardsPage() {
         </ul>
       )}
     </div>
+  );
+}
+
+function FilterChip({
+  href,
+  active,
+  children,
+}: {
+  href: string;
+  active: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <Link
+      href={href}
+      className={`inline-flex items-center rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
+        active
+          ? "border-[var(--accent)] bg-[var(--accent)]/10 text-[var(--accent)]"
+          : "border-[var(--border)] bg-[var(--card)] text-[var(--muted)] hover:bg-black/[.04] hover:text-[var(--foreground)] dark:hover:bg-white/[.06]"
+      }`}
+    >
+      {children}
+    </Link>
   );
 }
