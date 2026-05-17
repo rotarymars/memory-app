@@ -67,6 +67,12 @@ export default async function RootLayout({
                       Cards
                     </Link>
                     <Link
+                      href="/settings/tokens"
+                      className="rounded-md px-3 py-1.5 font-medium text-[var(--muted)] hover:bg-black/[.04] hover:text-[var(--foreground)] dark:hover:bg-white/[.06]"
+                    >
+                      Settings
+                    </Link>
+                    <Link
                       href="/cards/new"
                       className="ml-2 rounded-md bg-[var(--accent)] px-3 py-1.5 font-medium text-[var(--accent-foreground)] transition-opacity hover:opacity-90"
                     >

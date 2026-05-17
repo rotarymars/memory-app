@@ -32,3 +32,21 @@ export const cards = pgTable(
 
 export type Card = typeof cards.$inferSelect;
 export type NewCard = typeof cards.$inferInsert;
+
+export const apiTokens = pgTable(
+  "api_tokens",
+  {
+    id: serial("id").primaryKey(),
+    userId: text("user_id").notNull(),
+    name: text("name").notNull(),
+    tokenHash: text("token_hash").notNull().unique(),
+    tokenPreview: text("token_preview").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    lastUsedAt: timestamp("last_used_at", { withTimezone: true }),
+  },
+  (table) => [index("api_tokens_user_id_idx").on(table.userId)]
+);
+
+export type ApiToken = typeof apiTokens.$inferSelect;

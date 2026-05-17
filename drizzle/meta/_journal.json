@@ -15,6 +15,13 @@
       "when": 1778983262824,
       "tag": "0001_overjoyed_machine_man",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1778983961153,
+      "tag": "0002_lame_mikhail_rasputin",
+      "breakpoints": true
     }
   ]
 }

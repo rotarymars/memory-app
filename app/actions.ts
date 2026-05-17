@@ -9,6 +9,7 @@ import {
   recordReview,
   updateCard,
 } from "@/lib/cards";
+import { createApiToken, deleteApiToken } from "@/lib/api-tokens";
 import type { ReviewOutcome } from "@/lib/spaced-repetition";
 
 async function requireUserId(): Promise<string> {
@@ -77,4 +78,35 @@ export async function reviewCardAction(formData: FormData) {
   revalidatePath("/");
   revalidatePath("/review");
   revalidatePath("/cards");
+}
+
+export type CreateApiTokenState = {
+  ok: boolean;
+  token?: string;
+  error?: string;
+};
+
+export async function createApiTokenAction(
+  _prev: CreateApiTokenState,
+  formData: FormData
+): Promise<CreateApiTokenState> {
+  const userId = await requireUserId();
+  const name = String(formData.get("name") ?? "").trim();
+  if (!name) {
+    return { ok: false, error: "Name is required." };
+  }
+  if (name.length > 64) {
+    return { ok: false, error: "Name must be 64 characters or fewer." };
+  }
+  const { token } = await createApiToken({ userId, name });
+  revalidatePath("/settings/tokens");
+  return { ok: true, token };
+}
+
+export async function deleteApiTokenAction(formData: FormData) {
+  const userId = await requireUserId();
+  const id = Number(formData.get("id"));
+  if (!Number.isFinite(id)) throw new Error("Invalid token id.");
+  await deleteApiToken(userId, id);
+  revalidatePath("/settings/tokens");
 }
