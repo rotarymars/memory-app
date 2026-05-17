@@ -71,6 +71,24 @@ export async function createCard(input: {
   return row;
 }
 
+export async function createCards(input: {
+  userId: string;
+  cards: { front: string; back: string; tag?: string | null }[];
+}): Promise<Card[]> {
+  if (input.cards.length === 0) return [];
+  return db
+    .insert(cards)
+    .values(
+      input.cards.map((c) => ({
+        userId: input.userId,
+        front: c.front,
+        back: c.back,
+        tag: c.tag ?? null,
+      }))
+    )
+    .returning();
+}
+
 export async function updateCard(
   userId: string,
   id: number,

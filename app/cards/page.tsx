@@ -37,12 +37,20 @@ export default async function CardsPage({
             "All cards"
           )}
         </h1>
-        <Link
-          href="/cards/new"
-          className="inline-flex h-9 items-center rounded-md bg-[var(--accent)] px-3 text-sm font-medium text-[var(--accent-foreground)] hover:opacity-90"
-        >
-          New card
-        </Link>
+        <div className="flex items-center gap-2">
+          <Link
+            href="/cards/import"
+            className="inline-flex h-9 items-center rounded-md border border-[var(--border)] bg-[var(--card)] px-3 text-sm font-medium hover:bg-black/[.04] dark:hover:bg-white/[.06]"
+          >
+            Import
+          </Link>
+          <Link
+            href="/cards/new"
+            className="inline-flex h-9 items-center rounded-md bg-[var(--accent)] px-3 text-sm font-medium text-[var(--accent-foreground)] hover:opacity-90"
+          >
+            New card
+          </Link>
+        </div>
       </div>
 
       {tags.length > 0 && (

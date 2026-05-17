@@ -5,11 +5,13 @@ import { redirect } from "next/navigation";
 import { auth } from "@clerk/nextjs/server";
 import {
   createCard,
+  createCards,
   deleteCard,
   recordReview,
   updateCard,
 } from "@/lib/cards";
 import { createApiToken, deleteApiToken } from "@/lib/api-tokens";
+import { parseBulkInput } from "@/lib/parse-bulk";
 import type { ReviewOutcome } from "@/lib/spaced-repetition";
 
 async function requireUserId(): Promise<string> {
@@ -109,4 +111,44 @@ export async function deleteApiTokenAction(formData: FormData) {
   if (!Number.isFinite(id)) throw new Error("Invalid token id.");
   await deleteApiToken(userId, id);
   revalidatePath("/settings/tokens");
+}
+
+export type BulkImportState = {
+  ok: boolean;
+  created?: number;
+  error?: string;
+};
+
+export async function bulkImportAction(
+  _prev: BulkImportState,
+  formData: FormData
+): Promise<BulkImportState> {
+  const userId = await requireUserId();
+  const text = String(formData.get("text") ?? "");
+  const tagRaw = String(formData.get("tag") ?? "").trim();
+  const tag = tagRaw.length > 0 ? tagRaw : null;
+
+  if (!text.trim()) {
+    return { ok: false, error: "Paste some cards first." };
+  }
+
+  const pairs = parseBulkInput(text);
+  if (pairs.length === 0) {
+    return {
+      ok: false,
+      error:
+        "Couldn't find any complete front/back pairs. Separate each front from its back with a blank line, and each card from the next with a blank line.",
+    };
+  }
+
+  await createCards({
+    userId,
+    cards: pairs.map((p) => ({ front: p.front, back: p.back, tag })),
+  });
+
+  revalidatePath("/");
+  revalidatePath("/cards");
+  revalidatePath("/review");
+
+  return { ok: true, created: pairs.length };
 }
