@@ -1,30 +1,40 @@
-// Ebbinghaus-style review intervals (in days).
+// Ebbinghaus-style review intervals, in minutes.
 // Each successful recall advances the card to the next level.
-// A failed recall resets the level to 0 (review again tomorrow).
-export const REVIEW_INTERVALS_DAYS = [
-  1, // level 0 -> review in 1 day
-  2, // level 1 -> review in 2 days
-  4, // level 2 -> review in 4 days
-  7, // level 3 -> review in 1 week
-  15, // level 4 -> review in ~2 weeks
-  30, // level 5 -> review in 1 month
-  60, // level 6 -> review in 2 months
-  120, // level 7 -> review in 4 months
-  240, // level 8+ -> review every 8 months (mastered)
+// A failed recall resets the level to 0 (so the card resurfaces in 10 minutes).
+
+const HOUR = 60;
+const DAY = 24 * HOUR;
+const MONTH = 30 * DAY;
+
+export const REVIEW_INTERVALS_MINUTES = [
+  10, //  0: 10 min
+  30, //  1: 30 min
+  HOUR, //  2: 1 h
+  2 * HOUR, //  3: 2 h
+  3 * HOUR, //  4: 3 h
+  6 * HOUR, //  5: 6 h
+  12 * HOUR, //  6: 12 h
+  DAY, //  7: 1 d
+  2 * DAY, //  8: 2 d
+  3 * DAY, //  9: 3 d
+  5 * DAY, // 10: 5 d
+  10 * DAY, // 11: 10 d
+  15 * DAY, // 12: 15 d
+  MONTH, // 13: 1 mo
+  2 * MONTH, // 14: 2 mo
+  3 * MONTH, // 15: 3 mo
 ] as const;
 
-export const MAX_LEVEL = REVIEW_INTERVALS_DAYS.length - 1;
+export const MAX_LEVEL = REVIEW_INTERVALS_MINUTES.length - 1;
 
-export function intervalDaysForLevel(level: number): number {
+export function intervalMinutesForLevel(level: number): number {
   const bounded = Math.max(0, Math.min(level, MAX_LEVEL));
-  return REVIEW_INTERVALS_DAYS[bounded];
+  return REVIEW_INTERVALS_MINUTES[bounded];
 }
 
 export function nextReviewDate(level: number, from: Date = new Date()): Date {
-  const days = intervalDaysForLevel(level);
-  const next = new Date(from);
-  next.setDate(next.getDate() + days);
-  return next;
+  const minutes = intervalMinutesForLevel(level);
+  return new Date(from.getTime() + minutes * 60_000);
 }
 
 export type ReviewOutcome = "again" | "good";
@@ -42,9 +52,16 @@ export function applyReview(
   };
 }
 
-export function formatInterval(days: number): string {
-  if (days < 7) return `${days}d`;
-  if (days < 30) return `${Math.round(days / 7)}w`;
-  if (days < 365) return `${Math.round(days / 30)}mo`;
-  return `${Math.round(days / 365)}y`;
+export function formatInterval(minutes: number): string {
+  if (minutes < HOUR) return `${minutes}min`;
+  if (minutes < DAY) {
+    const hours = minutes / HOUR;
+    return `${Number.isInteger(hours) ? hours : hours.toFixed(1)}h`;
+  }
+  if (minutes < MONTH) {
+    const days = minutes / DAY;
+    return `${Number.isInteger(days) ? days : days.toFixed(1)}d`;
+  }
+  const months = minutes / MONTH;
+  return `${Number.isInteger(months) ? months : months.toFixed(1)}mo`;
 }

@@ -9,19 +9,26 @@ Cards live on a ladder of review intervals:
 
 | Level | Next review in |
 | ----- | -------------- |
-| 0     | 1 day          |
-| 1     | 2 days         |
-| 2     | 4 days         |
-| 3     | 1 week         |
-| 4     | 2 weeks        |
-| 5     | 1 month        |
-| 6     | 2 months       |
-| 7     | 4 months       |
-| 8     | 8 months       |
+| 0     | 10 minutes     |
+| 1     | 30 minutes     |
+| 2     | 1 hour         |
+| 3     | 2 hours        |
+| 4     | 3 hours        |
+| 5     | 6 hours        |
+| 6     | 12 hours       |
+| 7     | 1 day          |
+| 8     | 2 days         |
+| 9     | 3 days         |
+| 10    | 5 days         |
+| 11    | 10 days        |
+| 12    | 15 days        |
+| 13    | 1 month        |
+| 14    | 2 months       |
+| 15    | 3 months       |
 
 When you recall a card correctly (**Good**), it moves up one level and the
 next review is scheduled further out. If you miss it (**Again**), the card
-resets to level 0 and reappears tomorrow.
+resets to level 0 and reappears in 10 minutes.
 
 ## Setup
 

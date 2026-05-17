@@ -5,7 +5,7 @@ import { listCards, listTagSummaries } from "@/lib/cards";
 import { deleteCardAction } from "@/app/actions";
 import {
   formatInterval,
-  intervalDaysForLevel,
+  intervalMinutesForLevel,
 } from "@/lib/spaced-repetition";
 
 export const dynamic = "force-dynamic";
@@ -102,7 +102,7 @@ export default async function CardsPage({
         <ul className="flex flex-col gap-3">
           {cards.map((card) => {
             const isDue = card.nextReviewAt <= new Date();
-            const interval = intervalDaysForLevel(card.reviewLevel);
+            const interval = intervalMinutesForLevel(card.reviewLevel);
             return (
               <li
                 key={card.id}

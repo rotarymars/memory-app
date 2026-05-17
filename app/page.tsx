@@ -96,9 +96,10 @@ export default async function Home() {
         </h2>
         <p className="mt-3 text-sm leading-6">
           New cards are due immediately. Each time you recall a card correctly,
-          its next review moves further out — 1 day, then 2, 4, 7, 15, 30, 60,
-          120, 240 days. If you forget, the card resets to the start of the
-          ladder so you see it tomorrow.
+          its next review moves up one rung: 10min → 30min → 1h → 2h → 3h → 6h
+          → 12h → 1d → 2d → 3d → 5d → 10d → 15d → 1mo → 2mo → 3mo. If you
+          forget, the card resets to the bottom of the ladder so it resurfaces
+          in 10 minutes.
         </p>
       </section>
     </div>

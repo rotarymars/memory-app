@@ -5,7 +5,7 @@ import { useState, useTransition, useEffect } from "react";
 import { reviewCardAction } from "@/app/actions";
 import {
   formatInterval,
-  intervalDaysForLevel,
+  intervalMinutesForLevel,
   MAX_LEVEL,
 } from "@/lib/spaced-repetition";
 
@@ -92,8 +92,8 @@ export function ReviewSession({
     );
   }
 
-  const currentInterval = intervalDaysForLevel(current.reviewLevel);
-  const nextGoodInterval = intervalDaysForLevel(
+  const currentInterval = intervalMinutesForLevel(current.reviewLevel);
+  const nextGoodInterval = intervalMinutesForLevel(
     Math.min(current.reviewLevel + 1, MAX_LEVEL)
   );
 

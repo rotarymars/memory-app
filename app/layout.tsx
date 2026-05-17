@@ -106,8 +106,8 @@ export default async function RootLayout({
           </main>
           <footer className="border-t border-[var(--border)]">
             <div className="mx-auto max-w-4xl px-6 py-4 text-xs text-[var(--muted)]">
-              Cards review on an Ebbinghaus schedule — 1d, 2d, 4d, 1w, 2w,
-              1mo, 2mo, 4mo, 8mo.
+              Ebbinghaus schedule — 10min, 30min, 1h, 2h, 3h, 6h, 12h, 1d,
+              2d, 3d, 5d, 10d, 15d, 1mo, 2mo, 3mo.
             </div>
           </footer>
         </body>
