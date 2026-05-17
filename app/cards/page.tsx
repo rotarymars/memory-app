@@ -5,6 +5,7 @@ import { listCards, listTagSummaries } from "@/lib/cards";
 import { deleteCardAction } from "@/app/actions";
 import {
   formatInterval,
+  formatTimeUntil,
   intervalMinutesForLevel,
 } from "@/lib/spaced-repetition";
 
@@ -128,10 +129,10 @@ export default async function CardsPage({
                           {card.tag}
                         </Link>
                       )}
-                      <span>
+                      <span title={card.nextReviewAt.toLocaleString()}>
                         {isDue
                           ? "Due now"
-                          : `Next: ${card.nextReviewAt.toLocaleDateString()}`}
+                          : `Next in ${formatTimeUntil(card.nextReviewAt)}`}
                       </span>
                     </div>
                     <div className="mt-2 text-sm font-medium leading-6">

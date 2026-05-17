@@ -96,6 +96,7 @@ export function ReviewSession({
   const nextGoodInterval = intervalMinutesForLevel(
     Math.min(current.reviewLevel + 1, MAX_LEVEL)
   );
+  const againInterval = intervalMinutesForLevel(0);
 
   return (
     <div className="flex flex-col gap-6">
@@ -164,7 +165,7 @@ export function ReviewSession({
               Again
             </span>
             <span className="mt-1 text-xs text-[var(--muted)]">
-              Resets · review in 1d
+              Resets · review in {formatInterval(againInterval)}
             </span>
             <Key className="mt-2">1</Key>
           </button>

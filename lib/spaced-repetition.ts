@@ -65,3 +65,13 @@ export function formatInterval(minutes: number): string {
   const months = minutes / MONTH;
   return `${Number.isInteger(months) ? months : months.toFixed(1)}mo`;
 }
+
+export function formatTimeUntil(
+  target: Date,
+  now: Date = new Date()
+): string {
+  const ms = target.getTime() - now.getTime();
+  if (ms <= 0) return "now";
+  const minutes = Math.max(1, Math.round(ms / 60_000));
+  return formatInterval(minutes);
+}
