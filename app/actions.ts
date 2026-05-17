@@ -1,5 +1,6 @@
 "use server";
 
+import { cookies } from "next/headers";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import {
@@ -8,6 +9,12 @@ import {
   recordReview,
   updateCard,
 } from "@/lib/cards";
+import {
+  checkPassword,
+  createSessionToken,
+  SESSION_COOKIE_NAME,
+  SESSION_MAX_AGE_SECONDS,
+} from "@/lib/auth";
 import type { ReviewOutcome } from "@/lib/spaced-repetition";
 
 function parseForm(formData: FormData) {
@@ -64,4 +71,36 @@ export async function reviewCardAction(formData: FormData) {
   revalidatePath("/");
   revalidatePath("/review");
   revalidatePath("/cards");
+}
+
+function safeNext(next: string | undefined): string {
+  if (!next || !next.startsWith("/") || next.startsWith("//")) return "/";
+  return next;
+}
+
+export async function loginAction(formData: FormData) {
+  const password = String(formData.get("password") ?? "");
+  const next = safeNext(String(formData.get("next") ?? ""));
+  const ok = await checkPassword(password);
+  if (!ok) {
+    const params = new URLSearchParams({ error: "1" });
+    if (next !== "/") params.set("next", next);
+    redirect(`/login?${params.toString()}`);
+  }
+  const token = await createSessionToken();
+  const jar = await cookies();
+  jar.set(SESSION_COOKIE_NAME, token, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "lax",
+    path: "/",
+    maxAge: SESSION_MAX_AGE_SECONDS,
+  });
+  redirect(next);
+}
+
+export async function logoutAction() {
+  const jar = await cookies();
+  jar.delete(SESSION_COOKIE_NAME);
+  redirect("/login");
 }
