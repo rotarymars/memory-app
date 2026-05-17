@@ -1,65 +1,81 @@
-import Image from "next/image";
+import Link from "next/link";
+import { cardStats } from "@/lib/cards";
 
-export default function Home() {
+export const dynamic = "force-dynamic";
+
+export default async function Home() {
+  const stats = await cardStats();
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
+    <div className="flex flex-col gap-10">
+      <section className="flex flex-col gap-3">
+        <h1 className="text-3xl font-semibold tracking-tight">
+          Welcome back.
+        </h1>
+        <p className="text-[var(--muted)]">
+          {stats.due > 0
+            ? `You have ${stats.due} card${stats.due === 1 ? "" : "s"} ready to review.`
+            : "Nothing's due right now. Add a card or check back tomorrow."}
+        </p>
+        <div className="mt-2 flex flex-wrap gap-2">
+          <Link
+            href="/review"
+            className="inline-flex h-10 items-center rounded-md bg-[var(--accent)] px-4 text-sm font-medium text-[var(--accent-foreground)] transition-opacity hover:opacity-90"
           >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
+            {stats.due > 0 ? `Review ${stats.due} due` : "Review"}
+          </Link>
+          <Link
+            href="/cards/new"
+            className="inline-flex h-10 items-center rounded-md border border-[var(--border)] bg-[var(--card)] px-4 text-sm font-medium hover:bg-black/[.04] dark:hover:bg-white/[.06]"
           >
-            Documentation
-          </a>
+            New card
+          </Link>
         </div>
-      </main>
+      </section>
+
+      <section className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+        <StatCard label="Due now" value={stats.due} accent />
+        <StatCard label="Learning" value={stats.learning} />
+        <StatCard label="Mature" value={stats.mature} />
+        <StatCard label="Total" value={stats.total} />
+      </section>
+
+      <section className="rounded-lg border border-[var(--border)] bg-[var(--card)] p-6">
+        <h2 className="text-sm font-semibold uppercase tracking-wider text-[var(--muted)]">
+          How the schedule works
+        </h2>
+        <p className="mt-3 text-sm leading-6">
+          New cards are due immediately. Each time you recall a card correctly,
+          its next review moves further out — 1 day, then 2, 4, 7, 15, 30, 60,
+          120, 240 days. If you forget, the card resets to the start of the
+          ladder so you see it tomorrow.
+        </p>
+      </section>
+    </div>
+  );
+}
+
+function StatCard({
+  label,
+  value,
+  accent,
+}: {
+  label: string;
+  value: number;
+  accent?: boolean;
+}) {
+  return (
+    <div
+      className={`rounded-lg border p-4 ${
+        accent
+          ? "border-[var(--accent)]/40 bg-[var(--accent)]/5"
+          : "border-[var(--border)] bg-[var(--card)]"
+      }`}
+    >
+      <div className="text-xs font-medium uppercase tracking-wider text-[var(--muted)]">
+        {label}
+      </div>
+      <div className="mt-1 text-2xl font-semibold tabular-nums">{value}</div>
     </div>
   );
 }
