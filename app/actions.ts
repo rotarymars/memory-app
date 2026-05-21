@@ -7,6 +7,7 @@ import {
   createCard,
   createCards,
   deleteCard,
+  deleteCards,
   recordReview,
   updateCard,
 } from "@/lib/cards";
@@ -63,6 +64,16 @@ export async function deleteCardAction(formData: FormData) {
   const id = Number(formData.get("id"));
   if (!Number.isFinite(id)) throw new Error("Invalid card id.");
   await deleteCard(userId, id);
+  revalidatePath("/");
+  revalidatePath("/cards");
+  revalidatePath("/review");
+}
+
+export async function deleteCardsAction(ids: number[]) {
+  const userId = await requireUserId();
+  const validIds = ids.filter((id) => Number.isFinite(id));
+  if (validIds.length === 0) return;
+  await deleteCards(userId, validIds);
   revalidatePath("/");
   revalidatePath("/cards");
   revalidatePath("/review");

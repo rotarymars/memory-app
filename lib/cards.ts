@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, lte, sql, type SQL } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, lte, sql, type SQL } from "drizzle-orm";
 import { db } from "./db/client";
 import { cards, type Card } from "./db/schema";
 import { applyReview, type ReviewOutcome } from "./spaced-repetition";
@@ -111,6 +111,16 @@ export async function deleteCard(userId: string, id: number): Promise<void> {
   await db
     .delete(cards)
     .where(and(eq(cards.id, id), userFilter(userId)));
+}
+
+export async function deleteCards(
+  userId: string,
+  ids: number[]
+): Promise<void> {
+  if (ids.length === 0) return;
+  await db
+    .delete(cards)
+    .where(and(userFilter(userId), inArray(cards.id, ids)));
 }
 
 export async function recordReview(
