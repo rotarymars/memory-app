@@ -40,6 +40,7 @@ export default async function CardsPage({
         ? "Due now"
         : `Next in ${formatTimeUntil(card.nextReviewAt, now)}`,
       nextReviewTitle: card.nextReviewAt.toLocaleString(),
+      frontImageUrl: card.frontImageUrl,
     };
   });
 

@@ -23,21 +23,37 @@ async function requireUserId(): Promise<string> {
   return userId;
 }
 
+function parseImageUrl(value: FormDataEntryValue | null): string | null {
+  const url = String(value ?? "").trim();
+  if (!url) return null;
+  if (!/^https:\/\//i.test(url)) return null;
+  return url;
+}
+
 function parseForm(formData: FormData) {
   const front = String(formData.get("front") ?? "").trim();
   const back = String(formData.get("back") ?? "").trim();
   const tagRaw = String(formData.get("tag") ?? "").trim();
   const tag = tagRaw.length > 0 ? tagRaw : null;
-  return { front, back, tag };
+  const frontImageUrl = parseImageUrl(formData.get("frontImageUrl"));
+  const backImageUrl = parseImageUrl(formData.get("backImageUrl"));
+  return { front, back, tag, frontImageUrl, backImageUrl };
 }
 
 export async function createCardAction(formData: FormData) {
   const userId = await requireUserId();
-  const { front, back, tag } = parseForm(formData);
+  const { front, back, tag, frontImageUrl, backImageUrl } = parseForm(formData);
   if (!front || !back) {
     throw new Error("Both front and back are required.");
   }
-  await createCard({ userId, front, back, tag });
+  await createCard({
+    userId,
+    front,
+    back,
+    tag,
+    frontImageUrl,
+    backImageUrl,
+  });
   revalidatePath("/");
   revalidatePath("/cards");
   revalidatePath("/review");
@@ -48,11 +64,17 @@ export async function updateCardAction(formData: FormData) {
   const userId = await requireUserId();
   const id = Number(formData.get("id"));
   if (!Number.isFinite(id)) throw new Error("Invalid card id.");
-  const { front, back, tag } = parseForm(formData);
+  const { front, back, tag, frontImageUrl, backImageUrl } = parseForm(formData);
   if (!front || !back) {
     throw new Error("Both front and back are required.");
   }
-  await updateCard(userId, id, { front, back, tag });
+  await updateCard(userId, id, {
+    front,
+    back,
+    tag,
+    frontImageUrl,
+    backImageUrl,
+  });
   revalidatePath("/");
   revalidatePath("/cards");
   revalidatePath(`/cards/${id}/edit`);

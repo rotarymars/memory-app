@@ -14,6 +14,7 @@ export type CardRow = {
   isDue: boolean;
   nextLabel: string;
   nextReviewTitle: string;
+  frontImageUrl: string | null;
 };
 
 export default function CardList({ cards }: { cards: CardRow[] }) {
@@ -100,6 +101,14 @@ export default function CardList({ cards }: { cards: CardRow[] }) {
                   aria-label={`Select card: ${card.front}`}
                   className="mt-0.5 h-4 w-4 shrink-0 accent-[var(--accent)]"
                 />
+                {card.frontImageUrl && (
+                  /* eslint-disable-next-line @next/next/no-img-element */
+                  <img
+                    src={card.frontImageUrl}
+                    alt=""
+                    className="h-12 w-12 shrink-0 rounded-md border border-[var(--border)] object-cover"
+                  />
+                )}
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2 text-xs text-[var(--muted)]">
                     <span

@@ -14,6 +14,8 @@ export const cards = pgTable(
     userId: text("user_id").notNull(),
     front: text("front").notNull(),
     back: text("back").notNull(),
+    frontImageUrl: text("front_image_url"),
+    backImageUrl: text("back_image_url"),
     tag: text("tag"),
     reviewLevel: integer("review_level").notNull().default(0),
     nextReviewAt: timestamp("next_review_at", { withTimezone: true })

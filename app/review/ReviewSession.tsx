@@ -15,6 +15,8 @@ type ReviewCard = {
   back: string;
   tag: string | null;
   reviewLevel: number;
+  frontImageUrl: string | null;
+  backImageUrl: string | null;
 };
 
 export function ReviewSession({
@@ -136,6 +138,16 @@ export function ReviewSession({
         <div className="mt-2 whitespace-pre-wrap text-xl font-medium leading-8">
           {current.front}
         </div>
+        {current.frontImageUrl && (
+          <div className="mt-4 overflow-hidden rounded-md border border-[var(--border)] bg-black/[.02] dark:bg-white/[.03]">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={current.frontImageUrl}
+              alt="Front image"
+              className="max-h-96 w-auto"
+            />
+          </div>
+        )}
 
         {revealed ? (
           <div className="mt-8 border-t border-[var(--border)] pt-6">
@@ -145,6 +157,16 @@ export function ReviewSession({
             <div className="mt-2 whitespace-pre-wrap text-lg leading-7">
               {current.back}
             </div>
+            {current.backImageUrl && (
+              <div className="mt-4 overflow-hidden rounded-md border border-[var(--border)] bg-black/[.02] dark:bg-white/[.03]">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={current.backImageUrl}
+                  alt="Back image"
+                  className="max-h-96 w-auto"
+                />
+              </div>
+            )}
           </div>
         ) : (
           <div className="mt-8 text-center text-sm text-[var(--muted)]">

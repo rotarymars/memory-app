@@ -71,6 +71,8 @@ export default async function ReviewPage({
         back: c.back,
         tag: c.tag,
         reviewLevel: c.reviewLevel,
+        frontImageUrl: c.frontImageUrl,
+        backImageUrl: c.backImageUrl,
       }))}
     />
   );

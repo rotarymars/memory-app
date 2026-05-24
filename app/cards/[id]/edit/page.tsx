@@ -38,6 +38,8 @@ export default async function EditCardPage({
           front: card.front,
           back: card.back,
           tag: card.tag,
+          frontImageUrl: card.frontImageUrl,
+          backImageUrl: card.backImageUrl,
         }}
       />
       <div className="text-xs text-[var(--muted)]">

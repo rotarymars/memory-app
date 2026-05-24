@@ -58,6 +58,8 @@ export async function createCard(input: {
   front: string;
   back: string;
   tag?: string | null;
+  frontImageUrl?: string | null;
+  backImageUrl?: string | null;
 }): Promise<Card> {
   const [row] = await db
     .insert(cards)
@@ -66,6 +68,8 @@ export async function createCard(input: {
       front: input.front,
       back: input.back,
       tag: input.tag ?? null,
+      frontImageUrl: input.frontImageUrl ?? null,
+      backImageUrl: input.backImageUrl ?? null,
     })
     .returning();
   return row;
@@ -92,7 +96,13 @@ export async function createCards(input: {
 export async function updateCard(
   userId: string,
   id: number,
-  input: { front: string; back: string; tag?: string | null }
+  input: {
+    front: string;
+    back: string;
+    tag?: string | null;
+    frontImageUrl?: string | null;
+    backImageUrl?: string | null;
+  }
 ): Promise<Card | undefined> {
   const [row] = await db
     .update(cards)
@@ -100,6 +110,8 @@ export async function updateCard(
       front: input.front,
       back: input.back,
       tag: input.tag ?? null,
+      frontImageUrl: input.frontImageUrl ?? null,
+      backImageUrl: input.backImageUrl ?? null,
       updatedAt: new Date(),
     })
     .where(and(eq(cards.id, id), userFilter(userId)))
