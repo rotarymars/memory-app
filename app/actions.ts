@@ -8,12 +8,10 @@ import {
   createCards,
   deleteCard,
   deleteCards,
-  recordReview,
   updateCard,
 } from "@/lib/cards";
 import { createApiToken, deleteApiToken } from "@/lib/api-tokens";
 import { parseBulkInput } from "@/lib/parse-bulk";
-import type { ReviewOutcome } from "@/lib/spaced-repetition";
 
 async function requireUserId(): Promise<string> {
   const { userId } = await auth();
@@ -99,20 +97,6 @@ export async function deleteCardsAction(ids: number[]) {
   revalidatePath("/");
   revalidatePath("/cards");
   revalidatePath("/review");
-}
-
-export async function reviewCardAction(formData: FormData) {
-  const userId = await requireUserId();
-  const id = Number(formData.get("id"));
-  const outcome = String(formData.get("outcome")) as ReviewOutcome;
-  if (!Number.isFinite(id)) throw new Error("Invalid card id.");
-  if (outcome !== "good" && outcome !== "again") {
-    throw new Error("Invalid review outcome.");
-  }
-  await recordReview(userId, id, outcome);
-  revalidatePath("/");
-  revalidatePath("/review");
-  revalidatePath("/cards");
 }
 
 export type CreateApiTokenState = {

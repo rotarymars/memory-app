@@ -1,7 +1,7 @@
 import { and, asc, desc, eq, inArray, lte, sql, type SQL } from "drizzle-orm";
 import { db } from "./db/client";
 import { cards, type Card } from "./db/schema";
-import { applyReview, type ReviewOutcome } from "./spaced-repetition";
+import { MAX_LEVEL, nextReviewDate } from "./spaced-repetition";
 
 function tagFilter(tag: string | null | undefined): SQL | undefined {
   if (tag === undefined) return undefined;
@@ -135,28 +135,40 @@ export async function deleteCards(
     .where(and(userFilter(userId), inArray(cards.id, ids)));
 }
 
-export async function recordReview(
+export type ReviewState = { id: number; level: number };
+
+// Applies a batch of review results, scoped to the user's own cards. Each
+// entry sets the card's absolute review level; the next-review time is derived
+// from that level server-side (the client is not trusted with the schedule).
+// Writing absolute state makes this idempotent — re-sending the same entry
+// (e.g. a retry or a close-tab beacon) leaves the card unchanged.
+export async function applyReviewStates(
   userId: string,
-  id: number,
-  outcome: ReviewOutcome
-): Promise<Card | undefined> {
-  const card = await getCard(userId, id);
-  if (!card) return undefined;
+  states: ReviewState[]
+): Promise<void> {
+  // Coalesce by id so the last result for a card wins within the batch.
+  const levelById = new Map<number, number>();
+  for (const s of states) {
+    if (!Number.isFinite(s.id) || !Number.isFinite(s.level)) continue;
+    const level = Math.max(0, Math.min(Math.trunc(s.level), MAX_LEVEL));
+    levelById.set(s.id, level);
+  }
+  if (levelById.size === 0) return;
 
   const now = new Date();
-  const { nextLevel, nextReviewAt } = applyReview(card.reviewLevel, outcome, now);
-
-  const [row] = await db
-    .update(cards)
-    .set({
-      reviewLevel: nextLevel,
-      nextReviewAt,
-      lastReviewedAt: now,
-      updatedAt: now,
-    })
-    .where(and(eq(cards.id, id), userFilter(userId)))
-    .returning();
-  return row;
+  await Promise.all(
+    Array.from(levelById, ([id, level]) =>
+      db
+        .update(cards)
+        .set({
+          reviewLevel: level,
+          nextReviewAt: nextReviewDate(level, now),
+          lastReviewedAt: now,
+          updatedAt: now,
+        })
+        .where(and(eq(cards.id, id), userFilter(userId)))
+    )
+  );
 }
 
 export type CardStats = {
