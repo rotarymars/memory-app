@@ -9,6 +9,7 @@
   --accent: #6366f1;
   --accent-foreground: #ffffff;
   --success: #16a34a;
+  --warning: #d97706;
   --danger: #dc2626;
 }
 
@@ -21,6 +22,7 @@
   --color-accent: var(--accent);
   --color-accent-foreground: var(--accent-foreground);
   --color-success: var(--success);
+  --color-warning: var(--warning);
   --color-danger: var(--danger);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
@@ -36,6 +38,7 @@
     --accent: #818cf8;
     --accent-foreground: #09090b;
     --success: #22c55e;
+    --warning: #f59e0b;
     --danger: #ef4444;
   }
 }

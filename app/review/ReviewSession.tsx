@@ -6,7 +6,7 @@ import {
   applyReview,
   formatInterval,
   intervalMinutesForLevel,
-  MAX_LEVEL,
+  type ReviewOutcome,
 } from "@/lib/spaced-repetition";
 
 type ReviewCard = {
@@ -114,7 +114,7 @@ export function ReviewSession({
     flushRef.current = () => void flush();
   }, [flush]);
 
-  function answer(outcome: "good" | "again") {
+  function answer(outcome: ReviewOutcome) {
     if (!revealedRef.current || !current) return;
     revealedRef.current = false;
 
@@ -134,20 +134,24 @@ export function ReviewSession({
     void flush();
   }
 
-  // Keyboard shortcuts: Space/Enter reveals, 1/j = again, 2/k = good.
+  // Keyboard shortcuts: Space/Enter reveals; once revealed, 1-4 grade the card
+  // (1 = again/reset, 2 = down, 3 = up, 4 = two up).
   useEffect(() => {
+    const grades: Record<string, ReviewOutcome> = {
+      "1": "again",
+      "2": "down",
+      "3": "good",
+      "4": "great",
+    };
     function onKey(e: KeyboardEvent) {
       if (e.target instanceof HTMLInputElement) return;
       if (e.target instanceof HTMLTextAreaElement) return;
       if (!revealed && (e.key === " " || e.key === "Enter")) {
         e.preventDefault();
         reveal();
-      } else if (revealed && (e.key === "1" || e.key === "j")) {
+      } else if (revealed && grades[e.key]) {
         e.preventDefault();
-        answer("again");
-      } else if (revealed && (e.key === "2" || e.key === "k")) {
-        e.preventDefault();
-        answer("good");
+        answer(grades[e.key]);
       }
     }
     window.addEventListener("keydown", onKey);
@@ -250,11 +254,13 @@ export function ReviewSession({
     );
   }
 
+  // intervalMinutesForLevel clamps to [0, MAX_LEVEL], so over/undershooting the
+  // ladder here is safe (e.g. "down" at level 0 stays at level 0).
   const currentInterval = intervalMinutesForLevel(current.reviewLevel);
-  const nextGoodInterval = intervalMinutesForLevel(
-    Math.min(current.reviewLevel + 1, MAX_LEVEL)
-  );
   const againInterval = intervalMinutesForLevel(0);
+  const downInterval = intervalMinutesForLevel(current.reviewLevel - 1);
+  const goodInterval = intervalMinutesForLevel(current.reviewLevel + 1);
+  const greatInterval = intervalMinutesForLevel(current.reviewLevel + 2);
 
   return (
     <div className="flex flex-col gap-6">
@@ -333,7 +339,7 @@ export function ReviewSession({
       </div>
 
       {revealed ? (
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
           <button
             type="button"
             onClick={() => answer("again")}
@@ -343,9 +349,22 @@ export function ReviewSession({
               Again
             </span>
             <span className="mt-1 text-xs text-[var(--muted)]">
-              Resets · review in {formatInterval(againInterval)}
+              Reset · {formatInterval(againInterval)}
             </span>
             <Key className="mt-2">1</Key>
+          </button>
+          <button
+            type="button"
+            onClick={() => answer("down")}
+            className="flex flex-col items-center rounded-lg border border-[var(--border)] bg-[var(--card)] p-4 transition-colors hover:border-[var(--warning)]/40 hover:bg-[var(--warning)]/5"
+          >
+            <span className="text-sm font-semibold text-[var(--warning)]">
+              Hard
+            </span>
+            <span className="mt-1 text-xs text-[var(--muted)]">
+              Down · {formatInterval(downInterval)}
+            </span>
+            <Key className="mt-2">2</Key>
           </button>
           <button
             type="button"
@@ -356,9 +375,22 @@ export function ReviewSession({
               Good
             </span>
             <span className="mt-1 text-xs text-[var(--muted)]">
-              Next in {formatInterval(nextGoodInterval)}
+              Up · {formatInterval(goodInterval)}
             </span>
-            <Key className="mt-2">2</Key>
+            <Key className="mt-2">3</Key>
+          </button>
+          <button
+            type="button"
+            onClick={() => answer("great")}
+            className="flex flex-col items-center rounded-lg border border-[var(--border)] bg-[var(--card)] p-4 transition-colors hover:border-[var(--accent)]/40 hover:bg-[var(--accent)]/5"
+          >
+            <span className="text-sm font-semibold text-[var(--accent)]">
+              Easy
+            </span>
+            <span className="mt-1 text-xs text-[var(--muted)]">
+              Up ×2 · {formatInterval(greatInterval)}
+            </span>
+            <Key className="mt-2">4</Key>
           </button>
         </div>
       ) : (

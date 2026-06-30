@@ -1,6 +1,6 @@
 // Ebbinghaus-style review intervals, in minutes.
-// Each successful recall advances the card to the next level.
-// A failed recall resets the level to 0 (so the card resurfaces in 10 minutes).
+// A review nudges the card along this ladder of levels: it can reset the card
+// to level 0, step one level down, one level up, or two levels up.
 
 const HOUR = 60;
 const DAY = 24 * HOUR;
@@ -27,9 +27,12 @@ export const REVIEW_INTERVALS_MINUTES = [
 
 export const MAX_LEVEL = REVIEW_INTERVALS_MINUTES.length - 1;
 
+export function clampLevel(level: number): number {
+  return Math.max(0, Math.min(level, MAX_LEVEL));
+}
+
 export function intervalMinutesForLevel(level: number): number {
-  const bounded = Math.max(0, Math.min(level, MAX_LEVEL));
-  return REVIEW_INTERVALS_MINUTES[bounded];
+  return REVIEW_INTERVALS_MINUTES[clampLevel(level)];
 }
 
 export function nextReviewDate(level: number, from: Date = new Date()): Date {
@@ -37,15 +40,23 @@ export function nextReviewDate(level: number, from: Date = new Date()): Date {
   return new Date(from.getTime() + minutes * 60_000);
 }
 
-export type ReviewOutcome = "again" | "good";
+// "again" resets to level 0; the others step relative to the current level.
+export type ReviewOutcome = "again" | "down" | "good" | "great";
 
 export function applyReview(
   currentLevel: number,
   outcome: ReviewOutcome,
   now: Date = new Date()
 ): { nextLevel: number; nextReviewAt: Date } {
-  const nextLevel =
-    outcome === "good" ? Math.min(currentLevel + 1, MAX_LEVEL) : 0;
+  const target =
+    outcome === "again"
+      ? 0
+      : outcome === "down"
+        ? currentLevel - 1
+        : outcome === "good"
+          ? currentLevel + 1
+          : currentLevel + 2; // "great": two levels up
+  const nextLevel = clampLevel(target);
   return {
     nextLevel,
     nextReviewAt: nextReviewDate(nextLevel, now),
