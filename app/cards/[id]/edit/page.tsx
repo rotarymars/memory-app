@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
-import { auth } from "@clerk/nextjs/server";
+import { getUserId } from "@/lib/auth";
 import { getCard } from "@/lib/cards";
 import { updateCardAction } from "@/app/actions";
 import { CardForm } from "@/app/cards/CardForm";
@@ -10,7 +10,7 @@ export default async function EditCardPage({
 }: {
   params: Promise<{ id: string }>;
 }) {
-  const { userId } = await auth();
+  const userId = await getUserId();
   if (!userId) redirect("/sign-in");
   const { id } = await params;
   const cardId = Number(id);

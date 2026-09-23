@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { auth } from "@clerk/nextjs/server";
+import { getUserId } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import { listCards, listTagSummaries } from "@/lib/cards";
 import {
@@ -16,7 +16,7 @@ export default async function CardsPage({
 }: {
   searchParams: Promise<{ tag?: string }>;
 }) {
-  const { userId } = await auth();
+  const userId = await getUserId();
   if (!userId) redirect("/sign-in");
   const { tag: rawTag } = await searchParams;
   const tag = rawTag && rawTag.length > 0 ? rawTag : null;

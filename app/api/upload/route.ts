@@ -1,5 +1,5 @@
 import { handleUpload, type HandleUploadBody } from "@vercel/blob/client";
-import { auth } from "@clerk/nextjs/server";
+import { getUserId } from "@/lib/auth";
 import { NextResponse } from "next/server";
 
 export const runtime = "nodejs";
@@ -15,7 +15,7 @@ const ALLOWED_TYPES = [
 const MAX_BYTES = 10 * 1024 * 1024;
 
 export async function POST(request: Request): Promise<NextResponse> {
-  const { userId } = await auth();
+  const userId = await getUserId();
   if (!userId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }

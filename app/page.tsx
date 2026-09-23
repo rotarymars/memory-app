@@ -1,12 +1,12 @@
 import Link from "next/link";
-import { auth } from "@clerk/nextjs/server";
+import { getUserId } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import { cardStats, listTagSummaries } from "@/lib/cards";
 
 export const dynamic = "force-dynamic";
 
 export default async function Home() {
-  const { userId } = await auth();
+  const userId = await getUserId();
   if (!userId) redirect("/sign-in");
   const [stats, tags] = await Promise.all([
     cardStats(userId),

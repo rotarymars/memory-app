@@ -56,13 +56,47 @@ npm run db:push          # apply the schema to your Neon database
 directly without generating a migration file. For team workflows use
 `npm run db:generate` followed by `npm run db:migrate`.
 
-### 4. Run the dev server
+### 4. Create an account
+
+There's no sign-up page — accounts are created from the command line:
+
+```bash
+npm run user:create -- <username>
+```
+
+It prompts for the password. Usernames are 3–32 characters of lowercase
+letters, digits, `_` or `-`; passwords need at least 8 characters.
+
+### 5. Run the dev server
 
 ```bash
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000).
+Open [http://localhost:3000](http://localhost:3000) and sign in.
+
+## Managing users
+
+The user scripts talk to whichever database `DATABASE_URL` points at. They
+read `.env.local`, but a `DATABASE_URL` set in the shell wins — that's how to
+run them against production (copy the connection string from the Neon
+console, since Vercel marks it sensitive and won't pull it):
+
+```bash
+DATABASE_URL='postgresql://…' npm run user:list
+```
+
+- `npm run user:list` — accounts with their card/token counts, plus any user
+  ids that own cards but have no account.
+- `npm run user:create -- <username> [--id <id>]` — create an account.
+  `--id` reuses an existing user id so the cards and API tokens it owns
+  belong to the new account; use it to reattach data listed by `user:list`.
+- `npm run user:delete -- <username> [--yes]` — delete an account along with
+  its cards and API tokens, and sign out every session. Asks you to type the
+  username to confirm unless `--yes`.
+
+Sessions last 30 days and are stored in the `sessions` table, so signing out
+(or deleting the user) revokes them immediately.
 
 ## Usage
 
@@ -85,6 +119,9 @@ Open [http://localhost:3000](http://localhost:3000).
 | `npm run db:generate` | Generate a SQL migration from the schema         |
 | `npm run db:migrate`  | Apply pending migrations                         |
 | `npm run db:studio`   | Open Drizzle Studio to browse the database       |
+| `npm run user:list`   | List accounts and data with no account           |
+| `npm run user:create` | Create an account (see *Managing users*)         |
+| `npm run user:delete` | Delete an account (see *Managing users*)         |
 
 ## Project layout
 
@@ -104,8 +141,12 @@ app/
 lib/
   db/
     client.ts              # Neon + Drizzle client
-    schema.ts              # cards table
+    schema.ts              # cards, api_tokens, users, sessions tables
+  auth.ts                  # sessions + getUserId()
+  password.ts              # scrypt password hashing
   cards.ts                 # queries
   spaced-repetition.ts     # interval ladder + applyReview()
+scripts/                   # user:list / user:create / user:delete
+proxy.ts                   # redirects signed-out visitors to /sign-in
 drizzle.config.ts          # Drizzle Kit config
 ```

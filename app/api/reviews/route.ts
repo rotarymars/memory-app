@@ -1,4 +1,4 @@
-import { auth } from "@clerk/nextjs/server";
+import { getUserId } from "@/lib/auth";
 import { applyReviewStates, type ReviewState } from "@/lib/cards";
 
 export const runtime = "nodejs";
@@ -9,10 +9,10 @@ const MAX_BATCH = 1000;
 
 // Records review results for the signed-in user. Serves both the review
 // session's background flush (fetch) and its close-tab flush (sendBeacon),
-// which is why it lives behind Clerk's session-cookie auth rather than the
+// which is why it lives behind the session-cookie auth rather than the
 // bearer-token scheme used by /api/cards.
 export async function POST(req: Request): Promise<Response> {
-  const { userId } = await auth();
+  const userId = await getUserId();
   if (!userId) {
     return new Response("Unauthorized", { status: 401 });
   }

@@ -1,4 +1,4 @@
-import { auth } from "@clerk/nextjs/server";
+import { getUserId } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import { listApiTokens } from "@/lib/api-tokens";
 import { CreateTokenForm } from "./CreateTokenForm";
@@ -8,7 +8,7 @@ import { headers } from "next/headers";
 export const dynamic = "force-dynamic";
 
 export default async function TokensPage() {
-  const { userId } = await auth();
+  const userId = await getUserId();
   if (!userId) redirect("/sign-in");
 
   const tokens = await listApiTokens(userId);

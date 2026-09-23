@@ -52,3 +52,33 @@ export const apiTokens = pgTable(
 );
 
 export type ApiToken = typeof apiTokens.$inferSelect;
+
+// Accounts are created with `npm run user:create` — there is no sign-up page.
+// `id` is text so accounts migrated from Clerk keep their old `user_…` ids and
+// the cards/api_tokens rows that reference them stay attached.
+export const users = pgTable("users", {
+  id: text("id").primaryKey(),
+  username: text("username").notNull().unique(),
+  passwordHash: text("password_hash").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+});
+
+export type User = typeof users.$inferSelect;
+
+export const sessions = pgTable(
+  "sessions",
+  {
+    // SHA-256 of the token in the session cookie; the raw token is never stored.
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [index("sessions_user_id_idx").on(table.userId)]
+);

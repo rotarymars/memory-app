@@ -2,7 +2,12 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { auth } from "@clerk/nextjs/server";
+import {
+  authenticate,
+  createSession,
+  deleteSession,
+  getUserId,
+} from "@/lib/auth";
 import {
   createCard,
   createCards,
@@ -14,11 +19,50 @@ import { createApiToken, deleteApiToken } from "@/lib/api-tokens";
 import { parseBulkInput } from "@/lib/parse-bulk";
 
 async function requireUserId(): Promise<string> {
-  const { userId } = await auth();
+  const userId = await getUserId();
   if (!userId) {
     redirect("/sign-in");
   }
   return userId;
+}
+
+// `username` is echoed back so the form can refill it after a failed attempt
+// (React resets the form once the action finishes).
+export type SignInState = { error?: string; username?: string };
+
+// Only same-origin paths, so ?next= can't be used as an open redirect.
+function safeNextPath(value: FormDataEntryValue | null): string {
+  const next = String(value ?? "");
+  if (
+    !next.startsWith("/") ||
+    next.startsWith("//") ||
+    next.startsWith("/\\")
+  ) {
+    return "/";
+  }
+  return next;
+}
+
+export async function signInAction(
+  _prev: SignInState,
+  formData: FormData
+): Promise<SignInState> {
+  const username = String(formData.get("username") ?? "");
+  const password = String(formData.get("password") ?? "");
+  if (!username || !password) {
+    return { error: "Enter your username and password.", username };
+  }
+  const userId = await authenticate(username, password);
+  if (!userId) {
+    return { error: "Incorrect username or password.", username };
+  }
+  await createSession(userId);
+  redirect(safeNextPath(formData.get("next")));
+}
+
+export async function signOutAction() {
+  await deleteSession();
+  redirect("/sign-in");
 }
 
 function parseImageUrl(value: FormDataEntryValue | null): string | null {
