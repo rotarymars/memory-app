@@ -27,6 +27,9 @@ export const REVIEW_INTERVALS_MINUTES = [
 
 export const MAX_LEVEL = REVIEW_INTERVALS_MINUTES.length - 1;
 
+// A card counts as mature once it's scheduled 15 days or more out.
+export const MATURE_LEVEL = 12;
+
 export function clampLevel(level: number): number {
   return Math.max(0, Math.min(level, MAX_LEVEL));
 }
@@ -43,11 +46,14 @@ export function nextReviewDate(level: number, from: Date = new Date()): Date {
 // "again" resets to level 0; the others step relative to the current level.
 export type ReviewOutcome = "again" | "down" | "good" | "great";
 
-export function applyReview(
-  currentLevel: number,
-  outcome: ReviewOutcome,
-  now: Date = new Date()
-): { nextLevel: number; nextReviewAt: Date } {
+export const REVIEW_OUTCOMES: readonly ReviewOutcome[] = [
+  "again",
+  "down",
+  "good",
+  "great",
+];
+
+export function nextLevel(currentLevel: number, outcome: ReviewOutcome): number {
   const target =
     outcome === "again"
       ? 0
@@ -56,10 +62,18 @@ export function applyReview(
         : outcome === "good"
           ? currentLevel + 1
           : currentLevel + 2; // "great": two levels up
-  const nextLevel = clampLevel(target);
+  return clampLevel(target);
+}
+
+export function applyReview(
+  currentLevel: number,
+  outcome: ReviewOutcome,
+  now: Date = new Date()
+): { nextLevel: number; nextReviewAt: Date } {
+  const level = nextLevel(currentLevel, outcome);
   return {
-    nextLevel,
-    nextReviewAt: nextReviewDate(nextLevel, now),
+    nextLevel: level,
+    nextReviewAt: nextReviewDate(level, now),
   };
 }
 

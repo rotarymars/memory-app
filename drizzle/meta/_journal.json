@@ -36,6 +36,13 @@
       "when": 1790126508453,
       "tag": "0004_numerous_starbolt",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1790128014204,
+      "tag": "0005_deep_pretty_boy",
+      "breakpoints": true
     }
   ]
 }

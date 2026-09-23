@@ -1,5 +1,10 @@
 import { getUserId } from "@/lib/auth";
-import { applyReviewStates, type ReviewState } from "@/lib/cards";
+import {
+  applyReviewStates,
+  type OutcomeCounts,
+  type ReviewState,
+} from "@/lib/cards";
+import { REVIEW_OUTCOMES } from "@/lib/spaced-repetition";
 
 export const runtime = "nodejs";
 
@@ -31,14 +36,30 @@ export async function POST(req: Request): Promise<Response> {
 
   const states: ReviewState[] = reviews
     .filter(
-      (r): r is { id: unknown; level: unknown } =>
+      (r): r is { id: unknown; level: unknown; from?: unknown; counts?: unknown } =>
         typeof r === "object" && r !== null
     )
-    .map((r) => ({ id: Number(r.id), level: Number(r.level) }))
+    .map((r) => ({
+      id: Number(r.id),
+      level: Number(r.level),
+      from: r.from === undefined ? undefined : Number(r.from),
+      counts: parseCounts(r.counts),
+    }))
     .filter((s) => Number.isFinite(s.id) && Number.isFinite(s.level))
     .slice(0, MAX_BATCH);
 
   await applyReviewStates(userId, states);
 
   return new Response(null, { status: 204 });
+}
+
+function parseCounts(value: unknown): OutcomeCounts | undefined {
+  if (typeof value !== "object" || value === null) return undefined;
+  const raw = value as Record<string, unknown>;
+  const counts = {} as OutcomeCounts;
+  for (const outcome of REVIEW_OUTCOMES) {
+    const n = Number(raw[outcome] ?? 0);
+    counts[outcome] = Number.isFinite(n) && n > 0 ? Math.trunc(n) : 0;
+  }
+  return counts;
 }

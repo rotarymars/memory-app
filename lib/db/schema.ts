@@ -22,6 +22,13 @@ export const cards = pgTable(
       .notNull()
       .defaultNow(),
     lastReviewedAt: timestamp("last_reviewed_at", { withTimezone: true }),
+    // Lifetime tally of review answers, one column per outcome. Kept as
+    // counters on the card rather than a per-review log so storage stays flat
+    // no matter how much you review; the progress page aggregates these.
+    againCount: integer("again_count").notNull().default(0),
+    downCount: integer("down_count").notNull().default(0),
+    goodCount: integer("good_count").notNull().default(0),
+    greatCount: integer("great_count").notNull().default(0),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),

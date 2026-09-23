@@ -21,6 +21,20 @@ type ReviewCard = {
 
 type SaveStatus = "idle" | "saving" | "saved" | "error";
 
+type OutcomeCounts = Record<ReviewOutcome, number>;
+
+// An unsaved result for one card: the level it's moving to, the level it was
+// at when these answers started (`from`), and how many of each answer were
+// given since. Answering the same card again before a save merges into the
+// existing entry, so `from` stays put and the counts add up.
+type PendingReview = { level: number; from: number; counts: OutcomeCounts };
+
+const NO_COUNTS: OutcomeCounts = { again: 0, down: 0, good: 0, great: 0 };
+
+function toPayload(entries: Iterable<[number, PendingReview]>) {
+  return Array.from(entries, ([id, p]) => ({ id, ...p }));
+}
+
 const MAX_RETRY_DELAY = 15_000;
 const BASE_RETRY_DELAY = 2_000;
 
@@ -37,8 +51,8 @@ export function ReviewSession({
   const [completed, setCompleted] = useState(0);
 
   // Background save state. The pending map is the source of truth (cardId →
-  // latest target level); `pending`/`status` mirror it for rendering only.
-  const pendingRef = useRef<Map<number, number>>(new Map());
+  // unsaved result); `pending`/`status` mirror it for rendering only.
+  const pendingRef = useRef<Map<number, PendingReview>>(new Map());
   const flushingRef = useRef(false);
   const flushRef = useRef<() => void>(() => {});
   const retryRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -62,10 +76,7 @@ export function ReviewSession({
   // return early, and the in-flight call re-drains anything that piled up.
   const flush = useCallback(async () => {
     if (flushingRef.current) return;
-    const batch = Array.from(pendingRef.current, ([id, level]) => ({
-      id,
-      level,
-    }));
+    const batch = Array.from(pendingRef.current);
     if (batch.length === 0) return;
 
     flushingRef.current = true;
@@ -76,7 +87,7 @@ export function ReviewSession({
       const res = await fetch("/api/reviews", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ reviews: batch }),
+        body: JSON.stringify({ reviews: toPayload(batch) }),
         keepalive: true,
       });
       ok = res.ok;
@@ -87,10 +98,24 @@ export function ReviewSession({
     }
 
     if (ok) {
-      // Only clear entries that haven't been superseded by a newer answer
-      // (the same card can be re-answered while the request was in flight).
-      for (const { id, level } of batch) {
-        if (pendingRef.current.get(id) === level) pendingRef.current.delete(id);
+      // Clear the entries that were sent. If a card was re-answered while the
+      // request was in flight, its entry was merged with the one just saved —
+      // keep only the part that hasn't been saved yet.
+      for (const [id, sent] of batch) {
+        const current = pendingRef.current.get(id);
+        if (current === sent) {
+          pendingRef.current.delete(id);
+        } else if (current) {
+          const counts = { ...current.counts };
+          for (const o of Object.keys(counts) as ReviewOutcome[]) {
+            counts[o] = Math.max(0, counts[o] - sent.counts[o]);
+          }
+          pendingRef.current.set(id, {
+            level: current.level,
+            from: sent.level,
+            counts,
+          });
+        }
       }
       retryDelayRef.current = BASE_RETRY_DELAY;
       const left = pendingRef.current.size;
@@ -119,7 +144,14 @@ export function ReviewSession({
     revealedRef.current = false;
 
     const { nextLevel } = applyReview(current.reviewLevel, outcome);
-    pendingRef.current.set(current.id, nextLevel);
+    const prev = pendingRef.current.get(current.id);
+    const counts = { ...(prev?.counts ?? NO_COUNTS) };
+    counts[outcome] += 1;
+    pendingRef.current.set(current.id, {
+      level: nextLevel,
+      from: prev?.from ?? current.reviewLevel,
+      counts,
+    });
     setPending(pendingRef.current.size);
     setStatus("saving");
 
@@ -164,10 +196,7 @@ export function ReviewSession({
   // payload is idempotent, so re-sending in-flight entries is harmless.
   const beaconFlush = useCallback(() => {
     if (pendingRef.current.size === 0) return;
-    const reviews = Array.from(pendingRef.current, ([id, level]) => ({
-      id,
-      level,
-    }));
+    const reviews = toPayload(pendingRef.current);
     const blob = new Blob([JSON.stringify({ reviews })], {
       type: "application/json",
     });

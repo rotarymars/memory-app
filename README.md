@@ -106,6 +106,10 @@ Sessions last 30 days and are stored in the `sessions` table, so signing out
   press <kbd>Space</kbd> to flip. Press <kbd>1</kbd> for *Again* or <kbd>2</kbd>
   for *Good*.
 - **Cards** (`/cards`) — full list with edit and delete.
+- **Progress** (`/progress`) — recall rate per tag (share of answers that were
+  *Good* or *Easy*), how many cards are learning/young/mature, and an estimate
+  of how long until every card is mature. A card counts as mature once it's
+  scheduled 15 days or more out.
 
 ## Scripts
 
