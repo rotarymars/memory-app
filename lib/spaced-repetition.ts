@@ -1,6 +1,6 @@
 // Ebbinghaus-style review intervals, in minutes.
-// A review nudges the card along this ladder of levels: it can reset the card
-// to level 0, step one level down, one level up, or two levels up.
+// A review nudges the card along this ladder of levels: it can step the card
+// two levels down, one level down, one level up, or two levels up.
 
 const HOUR = 60;
 const DAY = 24 * HOUR;
@@ -43,7 +43,7 @@ export function nextReviewDate(level: number, from: Date = new Date()): Date {
   return new Date(from.getTime() + minutes * 60_000);
 }
 
-// "again" resets to level 0; the others step relative to the current level.
+// Every outcome steps relative to the current level ("again" drops two).
 export type ReviewOutcome = "again" | "down" | "good" | "great";
 
 export const REVIEW_OUTCOMES: readonly ReviewOutcome[] = [
@@ -56,7 +56,7 @@ export const REVIEW_OUTCOMES: readonly ReviewOutcome[] = [
 export function nextLevel(currentLevel: number, outcome: ReviewOutcome): number {
   const target =
     outcome === "again"
-      ? 0
+      ? currentLevel - 2
       : outcome === "down"
         ? currentLevel - 1
         : outcome === "good"

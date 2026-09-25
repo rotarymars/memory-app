@@ -155,8 +155,8 @@ export function ReviewSession({
     setPending(pendingRef.current.size);
     setStatus("saving");
 
-    // On "again", re-queue the card at its new (reset) level so a later answer
-    // in this session computes from the correct level.
+    // On "again", re-queue the card at its new (lowered) level so a later
+    // answer in this session computes from the correct level.
     if (outcome === "again") {
       setQueue((q) => [...q, { ...current, reviewLevel: nextLevel }]);
     }
@@ -167,7 +167,7 @@ export function ReviewSession({
   }
 
   // Keyboard shortcuts: Space/Enter reveals; once revealed, 1-4 grade the card
-  // (1 = again/reset, 2 = down, 3 = up, 4 = two up).
+  // (1 = two down, 2 = down, 3 = up, 4 = two up).
   useEffect(() => {
     const grades: Record<string, ReviewOutcome> = {
       "1": "again",
@@ -286,7 +286,7 @@ export function ReviewSession({
   // intervalMinutesForLevel clamps to [0, MAX_LEVEL], so over/undershooting the
   // ladder here is safe (e.g. "down" at level 0 stays at level 0).
   const currentInterval = intervalMinutesForLevel(current.reviewLevel);
-  const againInterval = intervalMinutesForLevel(0);
+  const againInterval = intervalMinutesForLevel(current.reviewLevel - 2);
   const downInterval = intervalMinutesForLevel(current.reviewLevel - 1);
   const goodInterval = intervalMinutesForLevel(current.reviewLevel + 1);
   const greatInterval = intervalMinutesForLevel(current.reviewLevel + 2);
@@ -378,7 +378,7 @@ export function ReviewSession({
               Again
             </span>
             <span className="mt-1 text-xs text-[var(--muted)]">
-              Reset · {formatInterval(againInterval)}
+              Down ×2 · {formatInterval(againInterval)}
             </span>
             <Key className="mt-2">1</Key>
           </button>

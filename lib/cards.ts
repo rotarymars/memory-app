@@ -185,8 +185,8 @@ function clampLevelInput(level: number): number {
 // The outcome tallies are kept idempotent the same way: they're only added
 // when the card is still at `from`, the level the answers started from. Once
 // an entry has landed the card has moved on, so a duplicate adds nothing. (The
-// exception is an answer that doesn't move the level, like "again" at level
-// 0 — a duplicate of that is counted twice. It's rare and only skews stats.)
+// exception is an answer that doesn't move the level, like "again" or
+// "down" at level 0 — a duplicate of that is counted twice. It's rare and only skews stats.)
 export async function applyReviewStates(
   userId: string,
   states: ReviewState[]

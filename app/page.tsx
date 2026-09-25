@@ -98,8 +98,8 @@ export default async function Home() {
           New cards are due immediately. Each time you recall a card correctly,
           its next review moves up one rung: 10min → 30min → 1h → 2h → 3h → 6h
           → 12h → 1d → 2d → 3d → 5d → 10d → 15d → 1mo → 2mo → 3mo. If you
-          forget, the card resets to the bottom of the ladder so it resurfaces
-          in 10 minutes.
+          forget, the card drops two rungs, so it comes back sooner without
+          losing all its progress.
         </p>
       </section>
     </div>

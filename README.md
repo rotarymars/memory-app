@@ -28,7 +28,8 @@ Cards live on a ladder of review intervals:
 
 When you recall a card correctly (**Good**), it moves up one level and the
 next review is scheduled further out. If you miss it (**Again**), the card
-resets to level 0 and reappears in 10 minutes.
+drops two levels (never below level 0), so it comes back sooner without losing
+all its progress.
 
 ## Setup
 
