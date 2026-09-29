@@ -92,6 +92,8 @@ DATABASE_URL='postgresql://…' npm run user:list
 - `npm run user:create -- <username> [--id <id>]` — create an account.
   `--id` reuses an existing user id so the cards and API tokens it owns
   belong to the new account; use it to reattach data listed by `user:list`.
+- `npm run user:password -- <username>` — set a new password (prompted) and
+  sign out every session.
 - `npm run user:delete -- <username> [--yes]` — delete an account along with
   its cards and API tokens, and sign out every session. Asks you to type the
   username to confirm unless `--yes`.
@@ -126,6 +128,7 @@ Sessions last 30 days and are stored in the `sessions` table, so signing out
 | `npm run db:studio`   | Open Drizzle Studio to browse the database       |
 | `npm run user:list`   | List accounts and data with no account           |
 | `npm run user:create` | Create an account (see *Managing users*)         |
+| `npm run user:password` | Change a password (see *Managing users*)       |
 | `npm run user:delete` | Delete an account (see *Managing users*)         |
 
 ## Project layout
@@ -151,7 +154,7 @@ lib/
   password.ts              # scrypt password hashing
   cards.ts                 # queries
   spaced-repetition.ts     # interval ladder + applyReview()
-scripts/                   # user:list / user:create / user:delete
+scripts/                   # user:list / user:create / user:password / user:delete
 proxy.ts                   # redirects signed-out visitors to /sign-in
 drizzle.config.ts          # Drizzle Kit config
 ```
