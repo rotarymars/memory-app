@@ -31,6 +31,15 @@ export default async function Home() {
           >
             {stats.due > 0 ? `Review ${stats.due} due` : "Review"}
           </Link>
+          {stats.total > 0 && (
+            <Link
+              href="/review?mode=practice"
+              title="Go through every card without changing your review schedule"
+              className="inline-flex h-10 items-center rounded-md border border-[var(--border)] bg-[var(--card)] px-4 text-sm font-medium hover:bg-black/[.04] dark:hover:bg-white/[.06]"
+            >
+              Practice all {stats.total}
+            </Link>
+          )}
           <Link
             href="/cards/new"
             className="inline-flex h-10 items-center rounded-md border border-[var(--border)] bg-[var(--card)] px-4 text-sm font-medium hover:bg-black/[.04] dark:hover:bg-white/[.06]"
@@ -72,6 +81,13 @@ export default async function Home() {
                     className="rounded-md px-2 py-1 text-xs text-[var(--muted)] hover:bg-black/[.04] hover:text-[var(--foreground)] dark:hover:bg-white/[.06]"
                   >
                     Browse
+                  </Link>
+                  <Link
+                    href={`/review?mode=practice&tag=${encodeURIComponent(t.tag)}`}
+                    title="Go through every card in this tag without changing your review schedule"
+                    className="rounded-md px-2 py-1 text-xs text-[var(--muted)] hover:bg-black/[.04] hover:text-[var(--foreground)] dark:hover:bg-white/[.06]"
+                  >
+                    Practice
                   </Link>
                   <Link
                     href={`/review?tag=${encodeURIComponent(t.tag)}`}

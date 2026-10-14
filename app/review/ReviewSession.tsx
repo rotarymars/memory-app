@@ -41,9 +41,12 @@ const BASE_RETRY_DELAY = 2_000;
 export function ReviewSession({
   initialCards,
   tag,
+  practice = false,
 }: {
   initialCards: ReviewCard[];
   tag?: string | null;
+  // Practice mode never saves: answers only reorder this session's queue.
+  practice?: boolean;
 }) {
   const [queue, setQueue] = useState(initialCards);
   const [index, setIndex] = useState(0);
@@ -139,6 +142,16 @@ export function ReviewSession({
     flushRef.current = () => void flush();
   }, [flush]);
 
+  // Practice: a miss sends the card to the back of the queue, a hit drops it.
+  function practiceAnswer(gotIt: boolean) {
+    if (!revealedRef.current || !current) return;
+    revealedRef.current = false;
+    if (!gotIt) setQueue((q) => [...q, current]);
+    setCompleted((c) => c + 1);
+    setIndex((i) => i + 1);
+    setRevealed(false);
+  }
+
   function answer(outcome: ReviewOutcome) {
     if (!revealedRef.current || !current) return;
     revealedRef.current = false;
@@ -167,7 +180,8 @@ export function ReviewSession({
   }
 
   // Keyboard shortcuts: Space/Enter reveals; once revealed, 1-4 grade the card
-  // (1 = two down, 2 = down, 3 = up, 4 = two up).
+  // (1 = two down, 2 = down, 3 = up, 4 = two up). In practice mode 1 = missed
+  // and 2 = got it.
   useEffect(() => {
     const grades: Record<string, ReviewOutcome> = {
       "1": "again",
@@ -181,7 +195,10 @@ export function ReviewSession({
       if (!revealed && (e.key === " " || e.key === "Enter")) {
         e.preventDefault();
         reveal();
-      } else if (revealed && grades[e.key]) {
+      } else if (revealed && practice && (e.key === "1" || e.key === "2")) {
+        e.preventDefault();
+        practiceAnswer(e.key === "2");
+      } else if (revealed && !practice && grades[e.key]) {
         e.preventDefault();
         answer(grades[e.key]);
       }
@@ -264,13 +281,16 @@ export function ReviewSession({
           Session complete.
         </h1>
         <p className="text-[var(--muted)]">
-          You reviewed {completed} card{completed === 1 ? "" : "s"}.
+          You {practice ? "practiced" : "reviewed"} {completed} card
+          {completed === 1 ? "" : "s"}.
         </p>
-        <SaveSummary
-          status={status}
-          pending={pending}
-          onRetry={retryNow}
-        />
+        {practice ? (
+          <p className="text-sm text-[var(--muted)]">
+            Practice mode — your review schedule wasn&apos;t changed.
+          </p>
+        ) : (
+          <SaveSummary status={status} pending={pending} onRetry={retryNow} />
+        )}
         <div className="flex gap-2 mt-2">
           <Link
             href="/"
@@ -295,6 +315,11 @@ export function ReviewSession({
     <div className="flex flex-col gap-6">
       <div className="flex items-center justify-between text-xs text-[var(--muted)]">
         <div className="flex items-center gap-2">
+          {practice && (
+            <span className="inline-flex items-center rounded-full bg-[var(--warning)]/10 px-2 py-0.5 font-medium text-[var(--warning)]">
+              Practice · not saved
+            </span>
+          )}
           {tag && (
             <span className="inline-flex items-center rounded-full bg-[var(--accent)]/10 px-2 py-0.5 font-medium text-[var(--accent)]">
               {tag}
@@ -313,7 +338,9 @@ export function ReviewSession({
           )}
         </div>
         <div className="flex items-center gap-3">
-          <SaveIndicator status={status} pending={pending} onRetry={retryNow} />
+          {!practice && (
+            <SaveIndicator status={status} pending={pending} onRetry={retryNow} />
+          )}
           <Link href="/" className="hover:underline">
             End session
           </Link>
@@ -367,7 +394,36 @@ export function ReviewSession({
         )}
       </div>
 
-      {revealed ? (
+      {revealed && practice ? (
+        <div className="grid grid-cols-2 gap-3">
+          <button
+            type="button"
+            onClick={() => practiceAnswer(false)}
+            className="flex flex-col items-center rounded-lg border border-[var(--border)] bg-[var(--card)] p-4 transition-colors hover:border-[var(--danger)]/40 hover:bg-[var(--danger)]/5"
+          >
+            <span className="text-sm font-semibold text-[var(--danger)]">
+              Missed
+            </span>
+            <span className="mt-1 text-xs text-[var(--muted)]">
+              See it again this session
+            </span>
+            <Key className="mt-2">1</Key>
+          </button>
+          <button
+            type="button"
+            onClick={() => practiceAnswer(true)}
+            className="flex flex-col items-center rounded-lg border border-[var(--border)] bg-[var(--card)] p-4 transition-colors hover:border-[var(--success)]/40 hover:bg-[var(--success)]/5"
+          >
+            <span className="text-sm font-semibold text-[var(--success)]">
+              Got it
+            </span>
+            <span className="mt-1 text-xs text-[var(--muted)]">
+              Next card
+            </span>
+            <Key className="mt-2">2</Key>
+          </button>
+        </div>
+      ) : revealed ? (
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
           <button
             type="button"
