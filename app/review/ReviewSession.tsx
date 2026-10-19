@@ -348,8 +348,14 @@ export function ReviewSession({
       </div>
 
       <div
-        className="relative cursor-pointer select-none rounded-xl border border-[var(--border)] bg-[var(--card)] p-10 shadow-sm transition-shadow hover:shadow-md"
-        onClick={() => !revealed && reveal()}
+        className={`relative rounded-xl border border-[var(--border)] bg-[var(--card)] p-10 shadow-sm transition-shadow ${
+          revealed ? "" : "cursor-pointer hover:shadow-md"
+        }`}
+        onClick={() => {
+          // Don't treat a drag-to-select as a reveal click.
+          if (window.getSelection()?.toString()) return;
+          if (!revealed) reveal();
+        }}
       >
         <div className="text-xs font-medium uppercase tracking-wider text-[var(--muted)]">
           Front
