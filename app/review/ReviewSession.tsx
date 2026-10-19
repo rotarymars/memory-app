@@ -8,6 +8,12 @@ import {
   intervalMinutesForLevel,
   type ReviewOutcome,
 } from "@/lib/spaced-repetition";
+import {
+  orderCards,
+  REVIEW_ORDER_LABELS,
+  REVIEW_ORDERS,
+  type ReviewOrder,
+} from "@/lib/review-order";
 
 type ReviewCard = {
   id: number;
@@ -42,8 +48,10 @@ export function ReviewSession({
   initialCards,
   tag,
   practice = false,
+  initialOrder = "random",
 }: {
   initialCards: ReviewCard[];
+  initialOrder?: ReviewOrder;
   tag?: string | null;
   // Practice mode never saves: answers only reorder this session's queue.
   practice?: boolean;
@@ -52,6 +60,7 @@ export function ReviewSession({
   const [index, setIndex] = useState(0);
   const [revealed, setRevealed] = useState(false);
   const [completed, setCompleted] = useState(0);
+  const [order, setOrder] = useState(initialOrder);
 
   // Background save state. The pending map is the source of truth (cardId →
   // unsaved result); `pending`/`status` mirror it for rendering only.
@@ -142,6 +151,18 @@ export function ReviewSession({
     flushRef.current = () => void flush();
   }, [flush]);
 
+  // Re-sorts the cards still to come. The card on screen stays put once its
+  // answer is showing; before that it's reshuffled along with the rest.
+  function changeOrder(next: ReviewOrder) {
+    setOrder(next);
+    // Keep the choice in the URL so a reload doesn't reset it.
+    const url = new URL(window.location.href);
+    url.searchParams.set("order", next);
+    window.history.replaceState(null, "", url);
+    const from = revealedRef.current ? index + 1 : index;
+    setQueue((q) => [...q.slice(0, from), ...orderCards(q.slice(from), next)]);
+  }
+
   // Practice: a miss sends the card to the back of the queue, a hit drops it.
   function practiceAnswer(gotIt: boolean) {
     if (!revealedRef.current || !current) return;
@@ -192,6 +213,7 @@ export function ReviewSession({
     function onKey(e: KeyboardEvent) {
       if (e.target instanceof HTMLInputElement) return;
       if (e.target instanceof HTMLTextAreaElement) return;
+      if (e.target instanceof HTMLSelectElement) return;
       if (!revealed && (e.key === " " || e.key === "Enter")) {
         e.preventDefault();
         reveal();
@@ -313,7 +335,7 @@ export function ReviewSession({
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex items-center justify-between text-xs text-[var(--muted)]">
+      <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-[var(--muted)]">
         <div className="flex items-center gap-2">
           {practice && (
             <span className="inline-flex items-center rounded-full bg-[var(--warning)]/10 px-2 py-0.5 font-medium text-[var(--warning)]">
@@ -338,6 +360,23 @@ export function ReviewSession({
           )}
         </div>
         <div className="flex items-center gap-3">
+          <select
+            value={order}
+            onChange={(e) => {
+              changeOrder(e.target.value as ReviewOrder);
+              // Hand focus back so Space/1-4 shortcuts keep working.
+              e.target.blur();
+            }}
+            aria-label="Card order"
+            title="Card order (cards on the same level are shuffled)"
+            className="rounded-md border border-[var(--border)] bg-[var(--card)] px-1.5 py-0.5 text-xs text-[var(--foreground)]"
+          >
+            {REVIEW_ORDERS.map((o) => (
+              <option key={o} value={o}>
+                {REVIEW_ORDER_LABELS[o]}
+              </option>
+            ))}
+          </select>
           {!practice && (
             <SaveIndicator status={status} pending={pending} onRetry={retryNow} />
           )}

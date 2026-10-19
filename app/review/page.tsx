@@ -2,18 +2,10 @@ import Link from "next/link";
 import { getUserId } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import { dueCards, listCards } from "@/lib/cards";
+import { orderCards, parseReviewOrder } from "@/lib/review-order";
 import { ReviewSession } from "./ReviewSession";
 
 export const dynamic = "force-dynamic";
-
-function shuffled<T>(items: T[]): T[] {
-  const out = [...items];
-  for (let i = out.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [out[i], out[j]] = [out[j], out[i]];
-  }
-  return out;
-}
 
 function reviewHref(params: { tag?: string | null; practice?: boolean }) {
   const q = new URLSearchParams();
@@ -26,18 +18,20 @@ function reviewHref(params: { tag?: string | null; practice?: boolean }) {
 export default async function ReviewPage({
   searchParams,
 }: {
-  searchParams: Promise<{ tag?: string; mode?: string }>;
+  searchParams: Promise<{ tag?: string; mode?: string; order?: string }>;
 }) {
   const userId = await getUserId();
   if (!userId) redirect("/sign-in");
-  const { tag: rawTag, mode } = await searchParams;
+  const { tag: rawTag, mode, order: rawOrder } = await searchParams;
   const tag = rawTag && rawTag.length > 0 ? rawTag : null;
-  // Practice mode goes through every card (shuffled) and never saves results,
-  // so cramming right before a test doesn't push cards far into the future.
+  const order = parseReviewOrder(rawOrder);
+  // Practice mode goes through every card and never saves results, so
+  // cramming right before a test doesn't push cards far into the future.
   const practice = mode === "practice";
-  const cards = practice
-    ? shuffled(await listCards(userId, tag))
-    : await dueCards(userId, { tag });
+  const cards = orderCards(
+    practice ? await listCards(userId, tag) : await dueCards(userId, { tag }),
+    order
+  );
 
   if (cards.length === 0 && practice) {
     return (
@@ -113,6 +107,7 @@ export default async function ReviewPage({
     <ReviewSession
       tag={tag}
       practice={practice}
+      initialOrder={order}
       initialCards={cards.map((c) => ({
         id: c.id,
         front: c.front,
