@@ -28,6 +28,18 @@ export const getUserId = cache(async (): Promise<string | null> => {
   return rows[0]?.userId ?? null;
 });
 
+// The signed-in user's username, or null. Memoized per request.
+export const getUsername = cache(async (): Promise<string | null> => {
+  const userId = await getUserId();
+  if (!userId) return null;
+  const rows = await db
+    .select({ username: users.username })
+    .from(users)
+    .where(eq(users.id, userId))
+    .limit(1);
+  return rows[0]?.username ?? null;
+});
+
 let dummyHash: Promise<string> | undefined;
 
 // Returns the user's id if the credentials match. Unknown usernames still pay

@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import Link from "next/link";
 import { signOutAction } from "@/app/actions";
-import { getUserId } from "@/lib/auth";
+import { getUsername } from "@/lib/auth";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -25,7 +25,7 @@ export default async function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  const userId = await getUserId();
+  const username = await getUsername();
 
   return (
     <html
@@ -48,7 +48,7 @@ export default async function RootLayout({
               Memory
             </Link>
             <div className="flex items-center gap-1 text-sm">
-              {userId ? (
+              {username ? (
                 <>
                   <Link
                     href="/review"
@@ -80,7 +80,13 @@ export default async function RootLayout({
                   >
                     New card
                   </Link>
-                  <form action={signOutAction} className="ml-2">
+                  <span
+                    className="ml-3 max-w-32 truncate border-l border-[var(--border)] pl-3 font-medium"
+                    title={`Signed in as ${username}`}
+                  >
+                    {username}
+                  </span>
+                  <form action={signOutAction}>
                     <button
                       type="submit"
                       className="rounded-md px-3 py-1.5 font-medium text-[var(--muted)] hover:bg-black/[.04] hover:text-[var(--foreground)] dark:hover:bg-white/[.06]"
