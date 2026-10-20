@@ -37,24 +37,46 @@ export function orderCards<T extends { reviewLevel: number }>(
   return out;
 }
 
-// Puts a card back into the part of the queue still to come (from `start`
-// on). In a level order it lands at the end of its level's group, so a missed
-// low-level card comes back before anything higher; in random order it goes
-// to the back.
-export function requeueCard<T extends { reviewLevel: number }>(
-  queue: T[],
+// How far back a missed card goes: it's shown again as the RELEARN_GAP-th card
+// after the one you just answered (so RELEARN_GAP - 1 others come between).
+export const RELEARN_GAP = 5;
+
+// Where a missed card re-enters the queue, given that the cards still to come
+// start at `start`. Clamped to the end when fewer cards are left.
+export function relearnIndex(
+  queueLength: number,
   start: number,
-  card: T,
-  order: ReviewOrder
-): T[] {
-  let at = queue.length;
-  if (order !== "random") {
-    const comesAfter = (other: T) =>
-      order === "low"
-        ? other.reviewLevel > card.reviewLevel
-        : other.reviewLevel < card.reviewLevel;
-    const i = queue.findIndex((c, j) => j >= start && comesAfter(c));
-    if (i !== -1) at = i;
-  }
-  return [...queue.slice(0, at), card, ...queue.slice(at)];
+  gap: number = RELEARN_GAP
+): number {
+  return Math.min(start + Math.max(0, gap - 1), queueLength);
+}
+
+// Puts a missed card back into the part of the queue still to come (from
+// `start` on), RELEARN_GAP cards later. This ignores the card order on purpose:
+// a miss lowers the card's level, so slotting it by level in "lowest level
+// first" would bring it straight back. The copy is flagged `relearn` so a later
+// order change leaves it where it is.
+export function requeueCard<
+  T extends { reviewLevel: number; relearn?: boolean },
+>(queue: T[], start: number, card: T, gap: number = RELEARN_GAP): T[] {
+  const at = relearnIndex(queue.length, start, gap);
+  return [...queue.slice(0, at), { ...card, relearn: true }, ...queue.slice(at)];
+}
+
+// Re-sorts the cards from `from` on. Cards waiting to be relearned keep their
+// slot so a new order can't pull a just-missed card to the front; everything
+// else is reordered into the remaining slots.
+export function reorderRemaining<
+  T extends { reviewLevel: number; relearn?: boolean },
+>(queue: T[], from: number, order: ReviewOrder): T[] {
+  const rest = queue.slice(from);
+  const sorted = orderCards(
+    rest.filter((c) => !c.relearn),
+    order
+  );
+  let k = 0;
+  return [
+    ...queue.slice(0, from),
+    ...rest.map((c) => (c.relearn ? c : sorted[k++])),
+  ];
 }

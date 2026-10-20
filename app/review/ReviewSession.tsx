@@ -3,18 +3,27 @@
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
-  applyReview,
   formatInterval,
   intervalMinutesForLevel,
   type ReviewOutcome,
 } from "@/lib/spaced-repetition";
 import {
   orderCards,
-  requeueCard,
+  reorderRemaining,
+  RELEARN_GAP,
   REVIEW_ORDER_LABELS,
   REVIEW_ORDERS,
   type ReviewOrder,
 } from "@/lib/review-order";
+import {
+  answerCard,
+  mergeAnswer,
+  practiceCard,
+  startSession,
+  type HeldAnswer,
+  type PendingReview,
+  type SessionState,
+} from "@/lib/review-session";
 
 type ReviewCard = {
   id: number;
@@ -24,19 +33,16 @@ type ReviewCard = {
   reviewLevel: number;
   frontImageUrl: string | null;
   backImageUrl: string | null;
+  relearn?: boolean;
 };
 
 type SaveStatus = "idle" | "saving" | "saved" | "error";
 
-type OutcomeCounts = Record<ReviewOutcome, number>;
-
-// An unsaved result for one card: the level it's moving to, the level it was
-// at when these answers started (`from`), and how many of each answer were
-// given since. Answering the same card again before a save merges into the
-// existing entry, so `from` stays put and the counts add up.
-type PendingReview = { level: number; from: number; counts: OutcomeCounts };
-
-const NO_COUNTS: OutcomeCounts = { again: 0, down: 0, good: 0, great: 0 };
+// The state just before the last answer, so it can be undone. `held` is that
+// answer's result, kept back from the save queue until the next answer or
+// until the page is left — once it's handed over the undo point is dropped.
+// Practice answers save nothing, so their `held` is null.
+type UndoPoint = { prev: SessionState<ReviewCard>; held: HeldAnswer | null };
 
 function toPayload(entries: Iterable<[number, PendingReview]>) {
   return Array.from(entries, ([id, p]) => ({ id, ...p }));
@@ -45,10 +51,13 @@ function toPayload(entries: Iterable<[number, PendingReview]>) {
 const MAX_RETRY_DELAY = 15_000;
 const BASE_RETRY_DELAY = 2_000;
 
+// A horizontal drag at least this long (px) counts as a swipe.
+const SWIPE_MIN_PX = 60;
+
 export function ReviewSession({
   initialCards,
   tag,
-  practice = false,
+  practice: initialPractice = false,
   initialOrder = "random",
 }: {
   initialCards: ReviewCard[];
@@ -57,11 +66,14 @@ export function ReviewSession({
   // Practice mode never saves: answers only reorder this session's queue.
   practice?: boolean;
 }) {
-  const [queue, setQueue] = useState(initialCards);
-  const [index, setIndex] = useState(0);
+  const [session, setSession] = useState(() => startSession(initialCards));
   const [revealed, setRevealed] = useState(false);
-  const [completed, setCompleted] = useState(0);
   const [order, setOrder] = useState(initialOrder);
+  // A review session can turn into a practice round of the cards it missed.
+  const [practice, setPractice] = useState(initialPractice);
+  const [round, setRound] = useState(1);
+  const [zoom, setZoom] = useState<string | null>(null);
+  const [fling, setFling] = useState<"left" | "right" | null>(null);
 
   // Background save state. The pending map is the source of truth (cardId →
   // unsaved result); `pending`/`status` mirror it for rendering only.
@@ -73,16 +85,41 @@ export function ReviewSession({
   const [pending, setPending] = useState(0);
   const [status, setStatus] = useState<SaveStatus>("idle");
 
+  const undoRef = useRef<UndoPoint | null>(null);
+  const [canUndo, setCanUndo] = useState(false);
+
   // Synchronous gate so a card is answered at most once per reveal, even on
   // keyboard autorepeat (the keydown listener closes over stale state).
   const revealedRef = useRef(false);
 
+  const touchRef = useRef<{ x: number; y: number } | null>(null);
+  const swipedAtRef = useRef(0);
+  const flingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const { queue, index, completed, missed } = session;
   const current = queue[index];
   const remaining = queue.length - index;
 
   const reveal = useCallback(() => {
     revealedRef.current = true;
     setRevealed(true);
+  }, []);
+
+  // Hands the held-back last answer over to the save queue. After this the
+  // answer can't be undone, since it may already be on its way to the server.
+  // Returns whether there was anything to hand over.
+  const commitHeld = useCallback((): boolean => {
+    const held = undoRef.current?.held;
+    if (!held) return false;
+    pendingRef.current.set(
+      held.id,
+      mergeAnswer(pendingRef.current.get(held.id), held)
+    );
+    undoRef.current = null;
+    setCanUndo(false);
+    setPending(pendingRef.current.size);
+    setStatus("saving");
+    return true;
   }, []);
 
   // Drains the pending map to the server. Single-flight: concurrent calls
@@ -152,8 +189,15 @@ export function ReviewSession({
     flushRef.current = () => void flush();
   }, [flush]);
 
+  function showFling(dir: "left" | "right") {
+    setFling(dir);
+    if (flingTimerRef.current) clearTimeout(flingTimerRef.current);
+    flingTimerRef.current = setTimeout(() => setFling(null), 140);
+  }
+
   // Re-sorts the cards still to come. The card on screen stays put once its
-  // answer is showing; before that it's reshuffled along with the rest.
+  // answer is showing; before that it's reshuffled along with the rest. Cards
+  // waiting to be relearned keep their place.
   function changeOrder(next: ReviewOrder) {
     setOrder(next);
     // Keep the choice in the URL so a reload doesn't reset it.
@@ -161,68 +205,118 @@ export function ReviewSession({
     url.searchParams.set("order", next);
     window.history.replaceState(null, "", url);
     const from = revealedRef.current ? index + 1 : index;
-    setQueue((q) => [...q.slice(0, from), ...orderCards(q.slice(from), next)]);
+    setSession((s) => ({ ...s, queue: reorderRemaining(s.queue, from, next) }));
   }
 
-  // Practice: a miss puts the card back in the queue, a hit drops it.
+  // Practice: a miss puts the card back a few cards later, a hit drops it.
   function practiceAnswer(gotIt: boolean) {
     if (!revealedRef.current || !current) return;
+    const next = practiceCard(session, gotIt);
+    if (!next) return;
     revealedRef.current = false;
-    if (!gotIt) setQueue((q) => requeueCard(q, index + 1, current, order));
-    setCompleted((c) => c + 1);
-    setIndex((i) => i + 1);
+    undoRef.current = { prev: session, held: null };
+    setCanUndo(true);
+    setSession(next);
     setRevealed(false);
+    showFling(gotIt ? "right" : "left");
   }
 
   function answer(outcome: ReviewOutcome) {
     if (!revealedRef.current || !current) return;
+    const result = answerCard(session, outcome);
+    if (!result) return;
     revealedRef.current = false;
 
-    const { nextLevel } = applyReview(current.reviewLevel, outcome);
-    const prev = pendingRef.current.get(current.id);
-    const counts = { ...(prev?.counts ?? NO_COUNTS) };
-    counts[outcome] += 1;
-    pendingRef.current.set(current.id, {
-      level: nextLevel,
-      from: prev?.from ?? current.reviewLevel,
-      counts,
-    });
-    setPending(pendingRef.current.size);
-    setStatus("saving");
+    // The previous answer can't be undone any more: send it on its way. This
+    // one is held back until the next answer (or until the page is left).
+    const handedOver = commitHeld();
+    undoRef.current = { prev: session, held: result.held };
+    setCanUndo(true);
+    // Last card of the session: nothing will follow to send it, so save it
+    // now.
+    const finished = !result.state.queue[result.state.index];
+    if (finished) commitHeld();
+    if (handedOver || finished) void flush();
 
-    // On "again", re-queue the card at its new (lowered) level so a later
-    // answer in this session computes from the correct level.
-    if (outcome === "again") {
-      setQueue((q) =>
-        requeueCard(q, index + 1, { ...current, reviewLevel: nextLevel }, order)
-      );
-    }
-    setCompleted((c) => c + 1);
-    setIndex((i) => i + 1);
+    setSession(result.state);
     setRevealed(false);
+    showFling(outcome === "again" || outcome === "down" ? "left" : "right");
+  }
+
+  // Takes back the last answer: the queue, the counters and the card's level
+  // go back to just before it, and its result is never sent.
+  function undo() {
+    const point = undoRef.current;
+    if (!point) return;
+    undoRef.current = null;
+    setCanUndo(false);
+    revealedRef.current = false;
+    setSession(point.prev);
+    setRevealed(false);
+  }
+
+  // Starts an unsaved practice round of the cards missed this session.
+  function practiceMissed() {
+    commitHeld();
     void flush();
+    const latest = new Map<number, ReviewCard>();
+    for (const c of queue) latest.set(c.id, c);
+    const cards = missed
+      .map((id) => latest.get(id))
+      .filter((c): c is ReviewCard => c !== undefined)
+      .map((c) => ({ ...c, relearn: undefined }));
+    undoRef.current = null;
+    setCanUndo(false);
+    revealedRef.current = false;
+    setRevealed(false);
+    setPractice(true);
+    setRound((r) => r + 1);
+    setSession(startSession(orderCards(cards, order)));
+  }
+
+  function swipe(dir: "left" | "right") {
+    if (!revealedRef.current) {
+      reveal();
+      return;
+    }
+    if (practice) practiceAnswer(dir === "right");
+    else answer(dir === "right" ? "good" : "again");
   }
 
   // Keyboard shortcuts: Space/Enter reveals; once revealed, 1-4 grade the card
-  // (1 = two down, 2 = down, 3 = up, 4 = two up). In practice mode 1 = missed
-  // and 2 = got it.
+  // (1 = two down, 2 = down, 3 = up, 4 = two up), ← = Again and → = Good. In
+  // practice mode 1/← = missed and 2/→ = got it. Z undoes the last answer.
   useEffect(() => {
     const grades: Record<string, ReviewOutcome> = {
       "1": "again",
       "2": "down",
       "3": "good",
       "4": "great",
+      ArrowLeft: "again",
+      ArrowRight: "good",
     };
     function onKey(e: KeyboardEvent) {
       if (e.target instanceof HTMLInputElement) return;
       if (e.target instanceof HTMLTextAreaElement) return;
       if (e.target instanceof HTMLSelectElement) return;
-      if (!revealed && (e.key === " " || e.key === "Enter")) {
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      if (zoom) {
+        if (e.key === "Escape") setZoom(null);
+        return;
+      }
+      if (e.key === "z" || e.key === "Z") {
+        e.preventDefault();
+        undo();
+      } else if (!revealed && (e.key === " " || e.key === "Enter")) {
         e.preventDefault();
         reveal();
-      } else if (revealed && practice && (e.key === "1" || e.key === "2")) {
+      } else if (
+        revealed &&
+        practice &&
+        ["1", "2", "ArrowLeft", "ArrowRight"].includes(e.key)
+      ) {
         e.preventDefault();
-        practiceAnswer(e.key === "2");
+        practiceAnswer(e.key === "2" || e.key === "ArrowRight");
       } else if (revealed && !practice && grades[e.key]) {
         e.preventDefault();
         answer(grades[e.key]);
@@ -231,19 +325,22 @@ export function ReviewSession({
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [revealed, index, queue]);
+  }, [revealed, session, practice, zoom]);
 
   // Best-effort flush that survives where a normal fetch would be cancelled —
-  // tab hide/close, or unmount on client-side navigation. The absolute-state
-  // payload is idempotent, so re-sending in-flight entries is harmless.
+  // tab hide/close, or unmount on client-side navigation. The held-back last
+  // answer goes too, so leaving never loses it (it just can't be undone after).
+  // The absolute-state payload is idempotent, so re-sending in-flight entries
+  // is harmless.
   const beaconFlush = useCallback(() => {
+    commitHeld();
     if (pendingRef.current.size === 0) return;
     const reviews = toPayload(pendingRef.current);
     const blob = new Blob([JSON.stringify({ reviews })], {
       type: "application/json",
     });
     navigator.sendBeacon?.("/api/reviews", blob);
-  }, []);
+  }, [commitHeld]);
 
   useEffect(() => {
     function onVisibility() {
@@ -286,6 +383,7 @@ export function ReviewSession({
   useEffect(
     () => () => {
       if (retryRef.current) clearTimeout(retryRef.current);
+      if (flingTimerRef.current) clearTimeout(flingTimerRef.current);
       // Salvage anything unsent when navigating away client-side.
       beaconFlush();
     },
@@ -298,28 +396,61 @@ export function ReviewSession({
     void flush();
   }, [flush]);
 
+  // Results are saved unless the session started in practice mode.
+  const saves = !initialPractice;
+
   if (!current) {
     return (
       <div className="flex flex-col items-center justify-center gap-4 py-20 text-center">
         <div className="text-5xl">🎉</div>
         <h1 className="text-2xl font-semibold tracking-tight">
-          Session complete.
+          {round > 1 ? "Practice round complete." : "Session complete."}
         </h1>
         <p className="text-[var(--muted)]">
           You {practice ? "practiced" : "reviewed"} {completed} card
-          {completed === 1 ? "" : "s"}.
+          {completed === 1 ? "" : "s"}
+          {missed.length > 0 && (
+            <>
+              {" "}
+              · missed{" "}
+              <span className="font-semibold text-[var(--danger)]">
+                {missed.length}
+              </span>
+            </>
+          )}
+          .
         </p>
-        {practice ? (
+        {practice && (
           <p className="text-sm text-[var(--muted)]">
-            Practice mode — your review schedule wasn&apos;t changed.
+            Practice mode — your review schedule wasn&apos;t changed
+            {round > 1 ? " by this round" : ""}.
           </p>
-        ) : (
+        )}
+        {saves && (
           <SaveSummary status={status} pending={pending} onRetry={retryNow} />
         )}
-        <div className="flex gap-2 mt-2">
+        <div className="mt-2 flex w-full max-w-sm flex-col gap-2">
+          {missed.length > 0 && (
+            <button
+              type="button"
+              onClick={practiceMissed}
+              className="inline-flex h-12 items-center justify-center rounded-md border border-[var(--danger)]/40 bg-[var(--danger)]/5 px-4 text-sm font-medium text-[var(--danger)] hover:bg-[var(--danger)]/10"
+            >
+              間違えたカードだけもう一度（練習・保存なし）· {missed.length}
+            </button>
+          )}
+          {canUndo && (
+            <button
+              type="button"
+              onClick={undo}
+              className="inline-flex h-10 items-center justify-center gap-2 rounded-md border border-[var(--border)] bg-[var(--card)] px-4 text-sm font-medium hover:bg-black/[.04] dark:hover:bg-white/[.06]"
+            >
+              Undo last answer <Key>Z</Key>
+            </button>
+          )}
           <Link
             href="/"
-            className="inline-flex h-10 items-center rounded-md bg-[var(--accent)] px-4 text-sm font-medium text-[var(--accent-foreground)] hover:opacity-90"
+            className="inline-flex h-10 items-center justify-center rounded-md bg-[var(--accent)] px-4 text-sm font-medium text-[var(--accent-foreground)] hover:opacity-90"
           >
             Back to dashboard
           </Link>
@@ -335,68 +466,121 @@ export function ReviewSession({
   const downInterval = intervalMinutesForLevel(current.reviewLevel - 1);
   const goodInterval = intervalMinutesForLevel(current.reviewLevel + 1);
   const greatInterval = intervalMinutesForLevel(current.reviewLevel + 2);
+  const total = completed + remaining;
 
   return (
-    <div className="flex flex-col gap-6">
-      <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-[var(--muted)]">
-        <div className="flex items-center gap-2">
-          {practice && (
-            <span className="inline-flex items-center rounded-full bg-[var(--warning)]/10 px-2 py-0.5 font-medium text-[var(--warning)]">
-              Practice · not saved
+    <div className="flex flex-col gap-4 sm:gap-6">
+      <div className="flex flex-col gap-2">
+        <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-[var(--muted)]">
+          <div className="flex flex-wrap items-center gap-2">
+            {practice && (
+              <span className="inline-flex items-center rounded-full bg-[var(--warning)]/10 px-2 py-0.5 font-medium text-[var(--warning)]">
+                Practice · not saved
+              </span>
+            )}
+            {tag && (
+              <span className="inline-flex items-center rounded-full bg-[var(--accent)]/10 px-2 py-0.5 font-medium text-[var(--accent)]">
+                {tag}
+              </span>
+            )}
+            <span className="tabular-nums">
+              {completed + 1} / {total}
             </span>
-          )}
-          {tag && (
-            <span className="inline-flex items-center rounded-full bg-[var(--accent)]/10 px-2 py-0.5 font-medium text-[var(--accent)]">
-              {tag}
+            {missed.length > 0 && (
+              <span className="tabular-nums text-[var(--danger)]">
+                Missed {missed.length}
+              </span>
+            )}
+            <span className="inline-flex items-center rounded-full bg-black/[.04] px-2 py-0.5 dark:bg-white/[.06]">
+              L{current.reviewLevel} · {formatInterval(currentInterval)}
             </span>
-          )}
-          <span>
-            {completed + 1} / {completed + remaining}
-          </span>
-          <span className="inline-flex items-center rounded-full bg-black/[.04] px-2 py-0.5 dark:bg-white/[.06]">
-            L{current.reviewLevel} · {formatInterval(currentInterval)}
-          </span>
-          {current.tag && (
-            <span className="rounded-full bg-black/[.04] px-2 py-0.5 dark:bg-white/[.06]">
-              {current.tag}
-            </span>
-          )}
+            {current.relearn && (
+              <span className="inline-flex items-center rounded-full bg-[var(--danger)]/10 px-2 py-0.5 font-medium text-[var(--danger)]">
+                Relearning
+              </span>
+            )}
+            {current.tag && (
+              <span className="rounded-full bg-black/[.04] px-2 py-0.5 dark:bg-white/[.06]">
+                {current.tag}
+              </span>
+            )}
+          </div>
+          <div className="flex items-center gap-3">
+            <select
+              value={order}
+              onChange={(e) => {
+                changeOrder(e.target.value as ReviewOrder);
+                // Hand focus back so Space/1-4 shortcuts keep working.
+                e.target.blur();
+              }}
+              aria-label="Card order"
+              title="Card order (cards on the same level are shuffled)"
+              className="rounded-md border border-[var(--border)] bg-[var(--card)] px-1.5 py-0.5 text-xs text-[var(--foreground)]"
+            >
+              {REVIEW_ORDERS.map((o) => (
+                <option key={o} value={o}>
+                  {REVIEW_ORDER_LABELS[o]}
+                </option>
+              ))}
+            </select>
+            {(saves || pending > 0) && (
+              <SaveIndicator
+                status={status}
+                pending={pending}
+                onRetry={retryNow}
+              />
+            )}
+            <Link href="/" className="hover:underline">
+              End session
+            </Link>
+          </div>
         </div>
-        <div className="flex items-center gap-3">
-          <select
-            value={order}
-            onChange={(e) => {
-              changeOrder(e.target.value as ReviewOrder);
-              // Hand focus back so Space/1-4 shortcuts keep working.
-              e.target.blur();
-            }}
-            aria-label="Card order"
-            title="Card order (cards on the same level are shuffled)"
-            className="rounded-md border border-[var(--border)] bg-[var(--card)] px-1.5 py-0.5 text-xs text-[var(--foreground)]"
-          >
-            {REVIEW_ORDERS.map((o) => (
-              <option key={o} value={o}>
-                {REVIEW_ORDER_LABELS[o]}
-              </option>
-            ))}
-          </select>
-          {!practice && (
-            <SaveIndicator status={status} pending={pending} onRetry={retryNow} />
-          )}
-          <Link href="/" className="hover:underline">
-            End session
-          </Link>
+        <div
+          className="h-1.5 overflow-hidden rounded-full bg-black/[.06] dark:bg-white/[.08]"
+          role="progressbar"
+          aria-valuemin={0}
+          aria-valuemax={total}
+          aria-valuenow={completed}
+        >
+          <div
+            className="h-full rounded-full bg-[var(--success)] transition-[width] duration-200"
+            style={{ width: `${(100 * completed) / total}%` }}
+          />
         </div>
       </div>
 
       <div
-        className={`relative rounded-xl border border-[var(--border)] bg-[var(--card)] p-10 shadow-sm transition-shadow ${
+        className={`relative select-none rounded-xl border border-[var(--border)] bg-[var(--card)] p-5 shadow-sm transition-[transform,box-shadow] duration-150 sm:p-10 ${
           revealed ? "" : "cursor-pointer hover:shadow-md"
+        } ${
+          fling === "left"
+            ? "-translate-x-3 -rotate-1"
+            : fling === "right"
+              ? "translate-x-3 rotate-1"
+              : ""
         }`}
         onClick={() => {
+          // A swipe also fires a click; don't let it flip the next card.
+          if (Date.now() - swipedAtRef.current < 450) return;
           // Don't treat a drag-to-select as a reveal click.
           if (window.getSelection()?.toString()) return;
           if (!revealed) reveal();
+        }}
+        onTouchStart={(e) => {
+          const t = e.touches[0];
+          touchRef.current = t ? { x: t.clientX, y: t.clientY } : null;
+        }}
+        onTouchEnd={(e) => {
+          const start = touchRef.current;
+          touchRef.current = null;
+          const t = e.changedTouches[0];
+          if (!start || !t) return;
+          const dx = t.clientX - start.x;
+          const dy = t.clientY - start.y;
+          if (Math.abs(dx) < SWIPE_MIN_PX || Math.abs(dx) < 1.5 * Math.abs(dy))
+            return;
+          swipedAtRef.current = Date.now();
+          swipe(dx > 0 ? "right" : "left");
         }}
       >
         <div className="text-xs font-medium uppercase tracking-wider text-[var(--muted)]">
@@ -406,18 +590,15 @@ export function ReviewSession({
           {current.front}
         </div>
         {current.frontImageUrl && (
-          <div className="mt-4 overflow-hidden rounded-md border border-[var(--border)] bg-black/[.02] dark:bg-white/[.03]">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={current.frontImageUrl}
-              alt="Front image"
-              className="max-h-96 w-auto"
-            />
-          </div>
+          <CardImage
+            src={current.frontImageUrl}
+            alt="Front image"
+            onZoom={setZoom}
+          />
         )}
 
         {revealed ? (
-          <div className="mt-8 border-t border-[var(--border)] pt-6">
+          <div className="mt-6 border-t border-[var(--border)] pt-5 sm:mt-8 sm:pt-6">
             <div className="text-xs font-medium uppercase tracking-wider text-[var(--muted)]">
               Back
             </div>
@@ -425,116 +606,216 @@ export function ReviewSession({
               {current.back}
             </div>
             {current.backImageUrl && (
-              <div className="mt-4 overflow-hidden rounded-md border border-[var(--border)] bg-black/[.02] dark:bg-white/[.03]">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={current.backImageUrl}
-                  alt="Back image"
-                  className="max-h-96 w-auto"
-                />
-              </div>
+              <CardImage
+                src={current.backImageUrl}
+                alt="Back image"
+                onZoom={setZoom}
+              />
             )}
           </div>
         ) : (
           <div className="mt-8 text-center text-sm text-[var(--muted)]">
-            Click to reveal · or press <Key>Space</Key>
+            Tap to reveal
+            <span className="hidden sm:inline">
+              {" "}
+              · or press <Key>Space</Key>
+            </span>
           </div>
         )}
       </div>
 
-      {revealed && practice ? (
-        <div className="grid grid-cols-2 gap-3">
+      <div className="sticky bottom-0 -mx-6 flex flex-col gap-2 bg-[var(--background)]/95 px-6 pt-2 pb-[calc(0.75rem+env(safe-area-inset-bottom))] backdrop-blur sm:static sm:mx-0 sm:bg-transparent sm:p-0 sm:backdrop-blur-none">
+        {revealed && practice ? (
+          <div className="grid grid-cols-2 gap-3">
+            <button
+              type="button"
+              onClick={() => practiceAnswer(false)}
+              className="flex flex-col items-center rounded-lg border border-[var(--border)] bg-[var(--card)] p-4 transition-colors hover:border-[var(--danger)]/40 hover:bg-[var(--danger)]/5"
+            >
+              <span className="text-sm font-semibold text-[var(--danger)]">
+                Missed
+              </span>
+              <span className="mt-1 text-xs text-[var(--muted)]">
+                Back in {RELEARN_GAP} cards
+              </span>
+              <span className="mt-2 hidden sm:block">
+                <Key>1 · ←</Key>
+              </span>
+            </button>
+            <button
+              type="button"
+              onClick={() => practiceAnswer(true)}
+              className="flex flex-col items-center rounded-lg border border-[var(--border)] bg-[var(--card)] p-4 transition-colors hover:border-[var(--success)]/40 hover:bg-[var(--success)]/5"
+            >
+              <span className="text-sm font-semibold text-[var(--success)]">
+                Got it
+              </span>
+              <span className="mt-1 text-xs text-[var(--muted)]">
+                Next card
+              </span>
+              <span className="mt-2 hidden sm:block">
+                <Key>2 · →</Key>
+              </span>
+            </button>
+          </div>
+        ) : revealed ? (
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            <button
+              type="button"
+              onClick={() => answer("again")}
+              className="flex flex-col items-center rounded-lg border border-[var(--border)] bg-[var(--card)] p-4 transition-colors hover:border-[var(--danger)]/40 hover:bg-[var(--danger)]/5"
+            >
+              <span className="text-sm font-semibold text-[var(--danger)]">
+                Again
+              </span>
+              <span className="mt-1 text-xs text-[var(--muted)]">
+                Down ×2 · {formatInterval(againInterval)}
+              </span>
+              <span className="mt-2 hidden sm:block">
+                <Key>1 · ←</Key>
+              </span>
+            </button>
+            <button
+              type="button"
+              onClick={() => answer("down")}
+              className="flex flex-col items-center rounded-lg border border-[var(--border)] bg-[var(--card)] p-4 transition-colors hover:border-[var(--warning)]/40 hover:bg-[var(--warning)]/5"
+            >
+              <span className="text-sm font-semibold text-[var(--warning)]">
+                Hard
+              </span>
+              <span className="mt-1 text-xs text-[var(--muted)]">
+                Down · {formatInterval(downInterval)}
+              </span>
+              <span className="mt-2 hidden sm:block">
+                <Key>2</Key>
+              </span>
+            </button>
+            <button
+              type="button"
+              onClick={() => answer("good")}
+              className="flex flex-col items-center rounded-lg border border-[var(--border)] bg-[var(--card)] p-4 transition-colors hover:border-[var(--success)]/40 hover:bg-[var(--success)]/5"
+            >
+              <span className="text-sm font-semibold text-[var(--success)]">
+                Good
+              </span>
+              <span className="mt-1 text-xs text-[var(--muted)]">
+                Up · {formatInterval(goodInterval)}
+              </span>
+              <span className="mt-2 hidden sm:block">
+                <Key>3 · →</Key>
+              </span>
+            </button>
+            <button
+              type="button"
+              onClick={() => answer("great")}
+              className="flex flex-col items-center rounded-lg border border-[var(--border)] bg-[var(--card)] p-4 transition-colors hover:border-[var(--accent)]/40 hover:bg-[var(--accent)]/5"
+            >
+              <span className="text-sm font-semibold text-[var(--accent)]">
+                Easy
+              </span>
+              <span className="mt-1 text-xs text-[var(--muted)]">
+                Up ×2 · {formatInterval(greatInterval)}
+              </span>
+              <span className="mt-2 hidden sm:block">
+                <Key>4</Key>
+              </span>
+            </button>
+          </div>
+        ) : (
           <button
             type="button"
-            onClick={() => practiceAnswer(false)}
-            className="flex flex-col items-center rounded-lg border border-[var(--border)] bg-[var(--card)] p-4 transition-colors hover:border-[var(--danger)]/40 hover:bg-[var(--danger)]/5"
+            onClick={reveal}
+            className="rounded-lg border border-[var(--border)] bg-[var(--card)] p-4 text-sm font-medium hover:bg-black/[.04] dark:hover:bg-white/[.06]"
           >
-            <span className="text-sm font-semibold text-[var(--danger)]">
-              Missed
-            </span>
-            <span className="mt-1 text-xs text-[var(--muted)]">
-              See it again this session
-            </span>
-            <Key className="mt-2">1</Key>
+            Show answer
           </button>
+        )}
+        <div className="flex items-center justify-between text-xs text-[var(--muted)]">
           <button
             type="button"
-            onClick={() => practiceAnswer(true)}
-            className="flex flex-col items-center rounded-lg border border-[var(--border)] bg-[var(--card)] p-4 transition-colors hover:border-[var(--success)]/40 hover:bg-[var(--success)]/5"
+            onClick={undo}
+            disabled={!canUndo}
+            className="inline-flex items-center gap-1.5 rounded-md px-2 py-1.5 font-medium hover:bg-black/[.04] disabled:opacity-40 disabled:hover:bg-transparent dark:hover:bg-white/[.06]"
           >
-            <span className="text-sm font-semibold text-[var(--success)]">
-              Got it
+            ↶ Undo
+            <span className="hidden sm:inline">
+              <Key>Z</Key>
             </span>
-            <span className="mt-1 text-xs text-[var(--muted)]">
-              Next card
-            </span>
-            <Key className="mt-2">2</Key>
           </button>
+          <span className="sm:hidden">Swipe ← Again · Good →</span>
+          <span className="hidden sm:inline">
+            Missed cards come back {RELEARN_GAP} cards later
+          </span>
         </div>
-      ) : revealed ? (
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-          <button
-            type="button"
-            onClick={() => answer("again")}
-            className="flex flex-col items-center rounded-lg border border-[var(--border)] bg-[var(--card)] p-4 transition-colors hover:border-[var(--danger)]/40 hover:bg-[var(--danger)]/5"
-          >
-            <span className="text-sm font-semibold text-[var(--danger)]">
-              Again
-            </span>
-            <span className="mt-1 text-xs text-[var(--muted)]">
-              Down ×2 · {formatInterval(againInterval)}
-            </span>
-            <Key className="mt-2">1</Key>
-          </button>
-          <button
-            type="button"
-            onClick={() => answer("down")}
-            className="flex flex-col items-center rounded-lg border border-[var(--border)] bg-[var(--card)] p-4 transition-colors hover:border-[var(--warning)]/40 hover:bg-[var(--warning)]/5"
-          >
-            <span className="text-sm font-semibold text-[var(--warning)]">
-              Hard
-            </span>
-            <span className="mt-1 text-xs text-[var(--muted)]">
-              Down · {formatInterval(downInterval)}
-            </span>
-            <Key className="mt-2">2</Key>
-          </button>
-          <button
-            type="button"
-            onClick={() => answer("good")}
-            className="flex flex-col items-center rounded-lg border border-[var(--border)] bg-[var(--card)] p-4 transition-colors hover:border-[var(--success)]/40 hover:bg-[var(--success)]/5"
-          >
-            <span className="text-sm font-semibold text-[var(--success)]">
-              Good
-            </span>
-            <span className="mt-1 text-xs text-[var(--muted)]">
-              Up · {formatInterval(goodInterval)}
-            </span>
-            <Key className="mt-2">3</Key>
-          </button>
-          <button
-            type="button"
-            onClick={() => answer("great")}
-            className="flex flex-col items-center rounded-lg border border-[var(--border)] bg-[var(--card)] p-4 transition-colors hover:border-[var(--accent)]/40 hover:bg-[var(--accent)]/5"
-          >
-            <span className="text-sm font-semibold text-[var(--accent)]">
-              Easy
-            </span>
-            <span className="mt-1 text-xs text-[var(--muted)]">
-              Up ×2 · {formatInterval(greatInterval)}
-            </span>
-            <Key className="mt-2">4</Key>
-          </button>
-        </div>
-      ) : (
-        <button
-          type="button"
-          onClick={reveal}
-          className="rounded-lg border border-[var(--border)] bg-[var(--card)] p-4 text-sm font-medium hover:bg-black/[.04] dark:hover:bg-white/[.06]"
-        >
-          Show answer
-        </button>
-      )}
+      </div>
+
+      {zoom && <Lightbox src={zoom} onClose={() => setZoom(null)} />}
+    </div>
+  );
+}
+
+function CardImage({
+  src,
+  alt,
+  onZoom,
+}: {
+  src: string;
+  alt: string;
+  onZoom: (src: string) => void;
+}) {
+  return (
+    <div className="mt-4 overflow-hidden rounded-md border border-[var(--border)] bg-black/[.02] dark:bg-white/[.03]">
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src={src}
+        alt={alt}
+        title="Tap to enlarge"
+        className="max-h-96 w-auto max-w-full cursor-zoom-in"
+        onClick={(e) => {
+          // Enlarge instead of flipping the card.
+          e.stopPropagation();
+          onZoom(src);
+        }}
+      />
+    </div>
+  );
+}
+
+// Full-screen image viewer. Tap the image to toggle between fit-to-screen and
+// full size (scroll to pan); tap outside, the close button or Esc to close.
+function Lightbox({ src, onClose }: { src: string; onClose: () => void }) {
+  const [big, setBig] = useState(false);
+  return (
+    <div
+      className={`fixed inset-0 z-50 overflow-auto bg-black/90 ${
+        big ? "block" : "flex items-center justify-center"
+      }`}
+      onClick={onClose}
+      role="dialog"
+      aria-modal="true"
+      aria-label="Enlarged image"
+    >
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src={src}
+        alt="Enlarged"
+        className={
+          big
+            ? "m-auto block max-w-none cursor-zoom-out bg-white"
+            : "block max-h-screen max-w-full cursor-zoom-in bg-white object-contain"
+        }
+        onClick={(e) => {
+          e.stopPropagation();
+          setBig((b) => !b);
+        }}
+      />
+      <button
+        type="button"
+        onClick={onClose}
+        className="fixed right-3 top-[calc(0.75rem+env(safe-area-inset-top))] rounded-md bg-white/90 px-3 py-1.5 text-sm font-medium text-black"
+      >
+        Close
+      </button>
     </div>
   );
 }
