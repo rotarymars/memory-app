@@ -92,6 +92,7 @@ export function ReviewSession({
   // keyboard autorepeat (the keydown listener closes over stale state).
   const revealedRef = useRef(false);
 
+  const answerRef = useRef<HTMLDivElement>(null);
   const touchRef = useRef<{ x: number; y: number } | null>(null);
   const swipedAtRef = useRef(0);
   const flingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -188,6 +189,23 @@ export function ReviewSession({
   useEffect(() => {
     flushRef.current = () => void flush();
   }, [flush]);
+
+  // On flip, bring the answer into view if it opened below the fold; on the
+  // next card, go back to the top.
+  useEffect(() => {
+    if (!revealed) return;
+    const r = answerRef.current?.getBoundingClientRect();
+    if (r && r.bottom > window.innerHeight - 160) {
+      window.scrollBy({
+        top: r.bottom - window.innerHeight + 180,
+        behavior: "smooth",
+      });
+    }
+  }, [revealed]);
+
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, [session]);
 
   function showFling(dir: "left" | "right") {
     setFling(dir);
@@ -400,25 +418,22 @@ export function ReviewSession({
   const saves = !initialPractice;
 
   if (!current) {
+    const cardCount = new Set(queue.map((c) => c.id)).size;
+    const firstTry = cardCount - missed.length;
     return (
-      <div className="flex flex-col items-center justify-center gap-4 py-20 text-center">
-        <div className="text-5xl">🎉</div>
-        <h1 className="text-2xl font-semibold tracking-tight">
-          {round > 1 ? "Practice round complete." : "Session complete."}
-        </h1>
+      <div className="mx-auto flex w-full max-w-[760px] flex-col items-center gap-2 py-6 text-center sm:py-10">
+        <div className="text-sm text-[var(--muted)]">
+          {round > 1 ? "Practice round" : "This session"}
+        </div>
+        <div className="my-1 text-4xl font-extrabold tabular-nums">
+          <span className="text-[var(--success)]">{firstTry}</span>
+          <span className="text-[var(--muted)]"> / {cardCount}</span>
+        </div>
         <p className="text-[var(--muted)]">
-          You {practice ? "practiced" : "reviewed"} {completed} card
-          {completed === 1 ? "" : "s"}
-          {missed.length > 0 && (
-            <>
-              {" "}
-              · missed{" "}
-              <span className="font-semibold text-[var(--danger)]">
-                {missed.length}
-              </span>
-            </>
-          )}
-          .
+          {missed.length > 0
+            ? `${missed.length} card${missed.length === 1 ? "" : "s"} missed at least once`
+            : "Every card right the first time!"}{" "}
+          · {completed} answer{completed === 1 ? "" : "s"}
         </p>
         {practice && (
           <p className="text-sm text-[var(--muted)]">
@@ -429,12 +444,12 @@ export function ReviewSession({
         {saves && (
           <SaveSummary status={status} pending={pending} onRetry={retryNow} />
         )}
-        <div className="mt-2 flex w-full max-w-sm flex-col gap-2">
+        <div className="mt-4 flex w-full max-w-[420px] flex-col gap-2.5">
           {missed.length > 0 && (
             <button
               type="button"
               onClick={practiceMissed}
-              className="inline-flex h-12 items-center justify-center rounded-md border border-[var(--danger)]/40 bg-[var(--danger)]/5 px-4 text-sm font-medium text-[var(--danger)] hover:bg-[var(--danger)]/10"
+              className="rounded-xl border border-[var(--danger)] bg-[var(--danger)] px-4 py-3.5 font-bold text-white hover:opacity-90"
             >
               間違えたカードだけもう一度（練習・保存なし）· {missed.length}
             </button>
@@ -443,14 +458,17 @@ export function ReviewSession({
             <button
               type="button"
               onClick={undo}
-              className="inline-flex h-10 items-center justify-center gap-2 rounded-md border border-[var(--border)] bg-[var(--card)] px-4 text-sm font-medium hover:bg-black/[.04] dark:hover:bg-white/[.06]"
+              className="inline-flex items-center justify-center gap-2 rounded-xl border border-[var(--border)] bg-[var(--card)] px-4 py-3.5 font-bold hover:bg-black/[.04] dark:hover:bg-white/[.06]"
             >
-              Undo last answer <Key>Z</Key>
+              ↶ Undo last answer
+              <span className="hidden sm:inline">
+                <Key>Z</Key>
+              </span>
             </button>
           )}
           <Link
             href="/"
-            className="inline-flex h-10 items-center justify-center rounded-md bg-[var(--accent)] px-4 text-sm font-medium text-[var(--accent-foreground)] hover:opacity-90"
+            className="rounded-xl border border-[var(--accent)] bg-[var(--accent)] px-4 py-3.5 font-bold text-[var(--accent-foreground)] hover:opacity-90"
           >
             Back to dashboard
           </Link>
@@ -467,96 +485,50 @@ export function ReviewSession({
   const goodInterval = intervalMinutesForLevel(current.reviewLevel + 1);
   const greatInterval = intervalMinutesForLevel(current.reviewLevel + 2);
   const total = completed + remaining;
+  const back = splitBack(current.back);
 
   return (
-    <div className="flex flex-col gap-4 sm:gap-6">
-      <div className="flex flex-col gap-2">
-        <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-[var(--muted)]">
-          <div className="flex flex-wrap items-center gap-2">
-            {practice && (
-              <span className="inline-flex items-center rounded-full bg-[var(--warning)]/10 px-2 py-0.5 font-medium text-[var(--warning)]">
-                Practice · not saved
-              </span>
-            )}
-            {tag && (
-              <span className="inline-flex items-center rounded-full bg-[var(--accent)]/10 px-2 py-0.5 font-medium text-[var(--accent)]">
-                {tag}
-              </span>
-            )}
-            <span className="tabular-nums">
-              {completed + 1} / {total}
-            </span>
-            {missed.length > 0 && (
-              <span className="tabular-nums text-[var(--danger)]">
-                Missed {missed.length}
-              </span>
-            )}
-            <span className="inline-flex items-center rounded-full bg-black/[.04] px-2 py-0.5 dark:bg-white/[.06]">
-              L{current.reviewLevel} · {formatInterval(currentInterval)}
-            </span>
-            {current.relearn && (
-              <span className="inline-flex items-center rounded-full bg-[var(--danger)]/10 px-2 py-0.5 font-medium text-[var(--danger)]">
-                Relearning
-              </span>
-            )}
-            {current.tag && (
-              <span className="rounded-full bg-black/[.04] px-2 py-0.5 dark:bg-white/[.06]">
-                {current.tag}
-              </span>
-            )}
-          </div>
-          <div className="flex items-center gap-3">
-            <select
-              value={order}
-              onChange={(e) => {
-                changeOrder(e.target.value as ReviewOrder);
-                // Hand focus back so Space/1-4 shortcuts keep working.
-                e.target.blur();
-              }}
-              aria-label="Card order"
-              title="Card order (cards on the same level are shuffled)"
-              className="rounded-md border border-[var(--border)] bg-[var(--card)] px-1.5 py-0.5 text-xs text-[var(--foreground)]"
-            >
-              {REVIEW_ORDERS.map((o) => (
-                <option key={o} value={o}>
-                  {REVIEW_ORDER_LABELS[o]}
-                </option>
-              ))}
-            </select>
-            {(saves || pending > 0) && (
-              <SaveIndicator
-                status={status}
-                pending={pending}
-                onRetry={retryNow}
-              />
-            )}
-            <Link href="/" className="hover:underline">
-              End session
-            </Link>
-          </div>
-        </div>
-        <div
-          className="h-1.5 overflow-hidden rounded-full bg-black/[.06] dark:bg-white/[.08]"
-          role="progressbar"
-          aria-valuemin={0}
-          aria-valuemax={total}
-          aria-valuenow={completed}
+    <div className="mx-auto flex w-full max-w-[760px] flex-col">
+      <div className="mb-2.5 flex items-center gap-2.5">
+        <Link
+          href="/"
+          className="shrink-0 rounded-[10px] border border-[var(--border)] bg-[var(--card)] px-3 py-1.5 text-sm font-bold hover:bg-black/[.04] dark:hover:bg-white/[.06]"
         >
-          <div
-            className="h-full rounded-full bg-[var(--success)] transition-[width] duration-200"
-            style={{ width: `${(100 * completed) / total}%` }}
-          />
-        </div>
+          ← End
+        </Link>
+        <span className="whitespace-nowrap text-[13px] tabular-nums">
+          <span className="text-[var(--success)]">
+            Done <b className="font-extrabold">{completed}</b>
+          </span>
+          {"　"}
+          <span className="text-[var(--danger)]">
+            Missed <b className="font-extrabold">{missed.length}</b>
+          </span>
+        </span>
+        <span className="ml-auto whitespace-nowrap text-sm tabular-nums text-[var(--muted)]">
+          {completed + 1} / {total}
+        </span>
+      </div>
+      <div
+        className="mb-3 h-[7px] overflow-hidden rounded bg-[var(--chip)]"
+        role="progressbar"
+        aria-valuemin={0}
+        aria-valuemax={total}
+        aria-valuenow={completed}
+      >
+        <div
+          className="h-full bg-[var(--success)] transition-[width] duration-200"
+          style={{ width: `${(100 * completed) / total}%` }}
+        />
       </div>
 
-      <div
-        className={`relative select-none rounded-xl border border-[var(--border)] bg-[var(--card)] p-5 shadow-sm transition-[transform,box-shadow] duration-150 sm:p-10 ${
-          revealed ? "" : "cursor-pointer hover:shadow-md"
-        } ${
+      <article
+        aria-live="polite"
+        className={`cursor-pointer select-none rounded-[18px] border border-[var(--border)] bg-[var(--card)] px-4 pt-4 pb-[18px] shadow-[var(--card-shadow)] transition-transform duration-[120ms] ease-out [-webkit-tap-highlight-color:transparent] sm:px-5 ${
           fling === "left"
-            ? "-translate-x-3 -rotate-1"
+            ? "-translate-x-3.5 -rotate-1"
             : fling === "right"
-              ? "translate-x-3 rotate-1"
+              ? "translate-x-3.5 rotate-1"
               : ""
         }`}
         onClick={() => {
@@ -583,10 +555,19 @@ export function ReviewSession({
           swipe(dx > 0 ? "right" : "left");
         }}
       >
-        <div className="text-xs font-medium uppercase tracking-wider text-[var(--muted)]">
-          Front
+        <div className="mb-2 flex flex-wrap gap-1.5">
+          {practice && (
+            <Chip className="text-[var(--warning)]">Practice · not saved</Chip>
+          )}
+          {(current.tag ?? tag) && <Chip>{current.tag ?? tag}</Chip>}
+          <Chip>
+            L{current.reviewLevel} · {formatInterval(currentInterval)}
+          </Chip>
+          {current.relearn && (
+            <Chip className="text-[var(--danger)]">Relearning</Chip>
+          )}
         </div>
-        <div className="mt-2 whitespace-pre-wrap text-xl font-medium leading-8">
+        <div className="whitespace-pre-wrap text-[1.18rem] font-bold leading-[1.55]">
           {current.front}
         </div>
         {current.frontImageUrl && (
@@ -598,13 +579,20 @@ export function ReviewSession({
         )}
 
         {revealed ? (
-          <div className="mt-6 border-t border-[var(--border)] pt-5 sm:mt-8 sm:pt-6">
-            <div className="text-xs font-medium uppercase tracking-wider text-[var(--muted)]">
-              Back
-            </div>
-            <div className="mt-2 whitespace-pre-wrap text-lg leading-7">
-              {current.back}
-            </div>
+          <div
+            ref={answerRef}
+            className="mt-3.5 animate-reveal border-t-2 border-dashed border-[var(--border)] pt-3"
+          >
+            {back.answer && (
+              <div className="whitespace-pre-wrap text-[1.28rem] font-extrabold leading-normal text-[var(--answer)]">
+                {back.answer}
+              </div>
+            )}
+            {back.note && (
+              <div className="mt-2 whitespace-pre-wrap text-[0.95rem] opacity-85">
+                {back.note}
+              </div>
+            )}
             {current.backImageUrl && (
               <CardImage
                 src={current.backImageUrl}
@@ -612,145 +600,222 @@ export function ReviewSession({
                 onZoom={setZoom}
               />
             )}
+            {back.source && (
+              <div className="mt-2.5 whitespace-pre-wrap text-[0.78rem] text-[var(--muted)]">
+                {back.source}
+              </div>
+            )}
           </div>
         ) : (
-          <div className="mt-8 text-center text-sm text-[var(--muted)]">
-            Tap to reveal
-            <span className="hidden sm:inline">
-              {" "}
-              · or press <Key>Space</Key>
-            </span>
+          <div className="mt-3 text-center text-[0.82rem] text-[var(--muted)]">
+            Tap the card to see the answer
           </div>
         )}
-      </div>
+      </article>
 
-      <div className="sticky bottom-0 -mx-6 flex flex-col gap-2 bg-[var(--background)]/95 px-6 pt-2 pb-[calc(0.75rem+env(safe-area-inset-bottom))] backdrop-blur sm:static sm:mx-0 sm:bg-transparent sm:p-0 sm:backdrop-blur-none">
+      <div className="sticky bottom-0 mt-1.5 bg-gradient-to-t from-[var(--background)] from-70% to-transparent pt-3 pb-[calc(12px+env(safe-area-inset-bottom))]">
         {revealed && practice ? (
-          <div className="grid grid-cols-2 gap-3">
-            <button
-              type="button"
+          <div className="flex gap-2.5">
+            <AnswerButton
+              tone="danger"
+              solid
               onClick={() => practiceAnswer(false)}
-              className="flex flex-col items-center rounded-lg border border-[var(--border)] bg-[var(--card)] p-4 transition-colors hover:border-[var(--danger)]/40 hover:bg-[var(--danger)]/5"
-            >
-              <span className="text-sm font-semibold text-[var(--danger)]">
-                Missed
-              </span>
-              <span className="mt-1 text-xs text-[var(--muted)]">
-                Back in {RELEARN_GAP} cards
-              </span>
-              <span className="mt-2 hidden sm:block">
-                <Key>1 · ←</Key>
-              </span>
-            </button>
-            <button
-              type="button"
+              label="Missed"
+              sub={`Back in ${RELEARN_GAP} cards`}
+              kbd="←"
+            />
+            <AnswerButton
+              tone="success"
+              solid
               onClick={() => practiceAnswer(true)}
-              className="flex flex-col items-center rounded-lg border border-[var(--border)] bg-[var(--card)] p-4 transition-colors hover:border-[var(--success)]/40 hover:bg-[var(--success)]/5"
-            >
-              <span className="text-sm font-semibold text-[var(--success)]">
-                Got it
-              </span>
-              <span className="mt-1 text-xs text-[var(--muted)]">
-                Next card
-              </span>
-              <span className="mt-2 hidden sm:block">
-                <Key>2 · →</Key>
-              </span>
-            </button>
+              label="Got it"
+              sub="Next card"
+              kbd="→"
+            />
           </div>
         ) : revealed ? (
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-            <button
-              type="button"
+          <div className="grid grid-cols-2 gap-2.5">
+            <AnswerButton
+              tone="danger"
+              solid
               onClick={() => answer("again")}
-              className="flex flex-col items-center rounded-lg border border-[var(--border)] bg-[var(--card)] p-4 transition-colors hover:border-[var(--danger)]/40 hover:bg-[var(--danger)]/5"
-            >
-              <span className="text-sm font-semibold text-[var(--danger)]">
-                Again
-              </span>
-              <span className="mt-1 text-xs text-[var(--muted)]">
-                Down ×2 · {formatInterval(againInterval)}
-              </span>
-              <span className="mt-2 hidden sm:block">
-                <Key>1 · ←</Key>
-              </span>
-            </button>
-            <button
-              type="button"
-              onClick={() => answer("down")}
-              className="flex flex-col items-center rounded-lg border border-[var(--border)] bg-[var(--card)] p-4 transition-colors hover:border-[var(--warning)]/40 hover:bg-[var(--warning)]/5"
-            >
-              <span className="text-sm font-semibold text-[var(--warning)]">
-                Hard
-              </span>
-              <span className="mt-1 text-xs text-[var(--muted)]">
-                Down · {formatInterval(downInterval)}
-              </span>
-              <span className="mt-2 hidden sm:block">
-                <Key>2</Key>
-              </span>
-            </button>
-            <button
-              type="button"
+              label="Again"
+              sub={`Down ×2 · ${formatInterval(againInterval)}`}
+              kbd="1 ←"
+            />
+            <AnswerButton
+              tone="success"
+              solid
               onClick={() => answer("good")}
-              className="flex flex-col items-center rounded-lg border border-[var(--border)] bg-[var(--card)] p-4 transition-colors hover:border-[var(--success)]/40 hover:bg-[var(--success)]/5"
-            >
-              <span className="text-sm font-semibold text-[var(--success)]">
-                Good
-              </span>
-              <span className="mt-1 text-xs text-[var(--muted)]">
-                Up · {formatInterval(goodInterval)}
-              </span>
-              <span className="mt-2 hidden sm:block">
-                <Key>3 · →</Key>
-              </span>
-            </button>
-            <button
-              type="button"
+              label="Good"
+              sub={`Up · ${formatInterval(goodInterval)}`}
+              kbd="3 →"
+            />
+            <AnswerButton
+              tone="warning"
+              onClick={() => answer("down")}
+              label="Hard"
+              sub={`Down · ${formatInterval(downInterval)}`}
+              kbd="2"
+            />
+            <AnswerButton
+              tone="accent"
               onClick={() => answer("great")}
-              className="flex flex-col items-center rounded-lg border border-[var(--border)] bg-[var(--card)] p-4 transition-colors hover:border-[var(--accent)]/40 hover:bg-[var(--accent)]/5"
-            >
-              <span className="text-sm font-semibold text-[var(--accent)]">
-                Easy
-              </span>
-              <span className="mt-1 text-xs text-[var(--muted)]">
-                Up ×2 · {formatInterval(greatInterval)}
-              </span>
-              <span className="mt-2 hidden sm:block">
-                <Key>4</Key>
-              </span>
-            </button>
+              label="Easy"
+              sub={`Up ×2 · ${formatInterval(greatInterval)}`}
+              kbd="4"
+            />
           </div>
         ) : (
           <button
             type="button"
             onClick={reveal}
-            className="rounded-lg border border-[var(--border)] bg-[var(--card)] p-4 text-sm font-medium hover:bg-black/[.04] dark:hover:bg-white/[.06]"
+            className="w-full rounded-[14px] border border-[var(--accent)] bg-[var(--accent)] px-2 py-4 text-[1.12rem] font-bold text-[var(--accent-foreground)] hover:opacity-90 active:translate-y-px"
           >
             Show answer
+            <span className="hidden sm:inline"> (Space)</span>
           </button>
         )}
-        <div className="flex items-center justify-between text-xs text-[var(--muted)]">
-          <button
-            type="button"
-            onClick={undo}
-            disabled={!canUndo}
-            className="inline-flex items-center gap-1.5 rounded-md px-2 py-1.5 font-medium hover:bg-black/[.04] disabled:opacity-40 disabled:hover:bg-transparent dark:hover:bg-white/[.06]"
+      </div>
+
+      <div className="flex flex-wrap items-center justify-between gap-2 text-[0.8rem] text-[var(--muted)]">
+        <button
+          type="button"
+          onClick={undo}
+          disabled={!canUndo}
+          className="rounded-[10px] border border-[var(--border)] px-3 py-1.5 text-[0.88rem] font-bold text-[var(--foreground)] hover:bg-black/[.04] disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:bg-transparent dark:hover:bg-white/[.06]"
+        >
+          Undo
+          <span className="hidden sm:inline"> (Z)</span>
+        </button>
+        <div className="flex items-center gap-3">
+          {(saves || pending > 0) && (
+            <SaveIndicator status={status} pending={pending} onRetry={retryNow} />
+          )}
+          <select
+            value={order}
+            onChange={(e) => {
+              changeOrder(e.target.value as ReviewOrder);
+              // Hand focus back so Space/1-4 shortcuts keep working.
+              e.target.blur();
+            }}
+            aria-label="Card order"
+            title="Card order (cards on the same level are shuffled)"
+            className="rounded-md border border-[var(--border)] bg-[var(--card)] px-1.5 py-0.5 text-xs text-[var(--foreground)]"
           >
-            ↶ Undo
-            <span className="hidden sm:inline">
-              <Key>Z</Key>
-            </span>
-          </button>
-          <span className="sm:hidden">Swipe ← Again · Good →</span>
-          <span className="hidden sm:inline">
-            Missed cards come back {RELEARN_GAP} cards later
-          </span>
+            {REVIEW_ORDERS.map((o) => (
+              <option key={o} value={o}>
+                {REVIEW_ORDER_LABELS[o]}
+              </option>
+            ))}
+          </select>
         </div>
       </div>
+      <p className="mt-3 text-[0.78rem] leading-relaxed text-[var(--muted)]">
+        <span className="sm:hidden">
+          Swipe ← Again · Good →. Missed cards come back {RELEARN_GAP} cards
+          later.
+        </span>
+        <span className="hidden sm:inline">
+          Space = answer · ← / 1 Again · 2 Hard · → / 3 Good · 4 Easy · Z undo.
+          Missed cards come back {RELEARN_GAP} cards later.
+        </span>
+      </p>
 
       {zoom && <Lightbox src={zoom} onClose={() => setZoom(null)} />}
     </div>
+  );
+}
+
+// Splits a card's back into the answer (first paragraph), the explanation
+// (the rest) and a source line ("出典：…" / "Source: …"), shown small at the
+// bottom like the 地理 cards.
+function splitBack(text: string): {
+  answer: string;
+  note: string;
+  source: string;
+} {
+  const lines = text.split(/\r?\n/);
+  const isSource = (l: string) => /^\s*(出典|source)\s*[:：]/i.test(l);
+  const source = lines.filter(isSource).join("\n").trim();
+  const body = lines.filter((l) => !isSource(l)).join("\n").trim();
+  const blank = body.search(/\n\s*\n/);
+  return blank === -1
+    ? { answer: body, note: "", source }
+    : {
+        answer: body.slice(0, blank).trim(),
+        note: body.slice(blank).trim(),
+        source,
+      };
+}
+
+function Chip({
+  children,
+  className = "",
+}: {
+  children: React.ReactNode;
+  className?: string;
+}) {
+  return (
+    <span
+      className={`rounded-full bg-[var(--chip)] px-2 py-0.5 text-xs font-bold text-[var(--muted)] ${className}`}
+    >
+      {children}
+    </span>
+  );
+}
+
+const TONES = {
+  danger: "var(--danger)",
+  success: "var(--success)",
+  warning: "var(--warning)",
+  accent: "var(--accent)",
+} as const;
+
+function AnswerButton({
+  tone,
+  solid = false,
+  label,
+  sub,
+  kbd,
+  onClick,
+}: {
+  tone: keyof typeof TONES;
+  solid?: boolean;
+  label: string;
+  sub: string;
+  kbd: string;
+  onClick: () => void;
+}) {
+  const color = TONES[tone];
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      style={
+        solid
+          ? {
+              // A shade darker than the token so white text stays readable
+              // in dark mode too.
+              background: `color-mix(in srgb, ${color} 82%, black)`,
+              borderColor: "transparent",
+              color: "#fff",
+            }
+          : { borderColor: color, color }
+      }
+      className={`flex flex-1 flex-col items-center justify-center rounded-[14px] border px-2 font-bold leading-tight hover:opacity-90 active:translate-y-px ${
+        solid ? "py-3.5 text-[1.12rem]" : "bg-[var(--card)] py-2.5 text-base"
+      }`}
+    >
+      <span>
+        {label}
+        <span className="hidden text-[0.8em] font-medium opacity-80 sm:inline">
+          {" "}
+          ({kbd})
+        </span>
+      </span>
+      <span className="mt-0.5 text-xs font-medium opacity-85">{sub}</span>
+    </button>
   );
 }
 
@@ -764,19 +829,21 @@ function CardImage({
   onZoom: (src: string) => void;
 }) {
   return (
-    <div className="mt-4 overflow-hidden rounded-md border border-[var(--border)] bg-black/[.02] dark:bg-white/[.03]">
+    <div className="mt-3 rounded-xl bg-[var(--figure)] p-1.5 text-center">
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
         src={src}
         alt={alt}
-        title="Tap to enlarge"
-        className="max-h-96 w-auto max-w-full cursor-zoom-in"
+        className="inline-block h-auto max-h-[58vh] max-w-full cursor-zoom-in align-middle"
         onClick={(e) => {
           // Enlarge instead of flipping the card.
           e.stopPropagation();
           onZoom(src);
         }}
       />
+      <span className="pointer-events-none mt-0.5 block text-right text-[0.7rem] leading-tight text-[#6b6b72]">
+        Tap to enlarge
+      </span>
     </div>
   );
 }
@@ -787,10 +854,12 @@ function Lightbox({ src, onClose }: { src: string; onClose: () => void }) {
   const [big, setBig] = useState(false);
   return (
     <div
-      className={`fixed inset-0 z-50 overflow-auto bg-black/90 ${
-        big ? "block" : "flex items-center justify-center"
+      className={`fixed inset-0 z-50 overflow-auto bg-[#0d0d10] [-webkit-overflow-scrolling:touch] ${
+        big ? "block" : "flex items-start justify-center"
       }`}
-      onClick={onClose}
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
       role="dialog"
       aria-modal="true"
       aria-label="Enlarged image"
@@ -802,7 +871,7 @@ function Lightbox({ src, onClose }: { src: string; onClose: () => void }) {
         className={
           big
             ? "m-auto block max-w-none cursor-zoom-out bg-white"
-            : "block max-h-screen max-w-full cursor-zoom-in bg-white object-contain"
+            : "m-auto block max-h-screen max-w-[100vw] cursor-zoom-in bg-white object-contain"
         }
         onClick={(e) => {
           e.stopPropagation();
@@ -812,10 +881,13 @@ function Lightbox({ src, onClose }: { src: string; onClose: () => void }) {
       <button
         type="button"
         onClick={onClose}
-        className="fixed right-3 top-[calc(0.75rem+env(safe-area-inset-top))] rounded-md bg-white/90 px-3 py-1.5 text-sm font-medium text-black"
+        className="fixed right-2.5 top-[calc(10px+env(safe-area-inset-top))] z-[51] rounded-[10px] border border-[var(--border)] bg-[var(--card)] px-3 py-1.5 text-sm font-bold text-[var(--foreground)]"
       >
         Close
       </button>
+      <span className="pointer-events-none fixed bottom-[calc(12px+env(safe-area-inset-bottom))] left-1/2 -translate-x-1/2 whitespace-nowrap rounded-full bg-black/50 px-2.5 py-0.5 text-[0.8rem] text-[#ddd]">
+        Tap the image to zoom in / out
+      </span>
     </div>
   );
 }

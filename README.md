@@ -105,9 +105,15 @@ Sessions last 30 days and are stored in the `sessions` table, so signing out
 
 - **Dashboard** (`/`) — see what's due and how many cards are learning vs. mature.
 - **New card** (`/cards/new`) — front, back, optional tag.
-- **Review** (`/review`) — go through every card that's due. Click the card or
-  press <kbd>Space</kbd> to flip. Press <kbd>1</kbd> for *Again* or <kbd>2</kbd>
-  for *Good*.
+- **Review** (`/review`) — go through every card that's due. Tap the card or
+  press <kbd>Space</kbd> to flip, then grade it: <kbd>1</kbd> *Again*,
+  <kbd>2</kbd> *Hard*, <kbd>3</kbd> *Good*, <kbd>4</kbd> *Easy* — or swipe /
+  press <kbd>←</kbd> for *Again* and <kbd>→</kbd> for *Good*. A card you
+  answer *Again* comes back 5 cards later (at the end if fewer are left) and
+  keeps coming back until you get it; every answer, re-shows included, moves
+  it on the ladder. <kbd>Z</kbd> undoes the last answer. Tap an image to
+  enlarge it. When you're done you can practice just the cards you missed
+  (not saved).
 - **Cards** (`/cards`) — full list with edit and delete.
 - **Progress** (`/progress`) — recall rate per tag (share of answers that were
   *Good* or *Easy*), how many cards are learning/young/mature, and an estimate
@@ -122,6 +128,7 @@ Sessions last 30 days and are stored in the `sessions` table, so signing out
 | `npm run build`       | Production build                                 |
 | `npm run start`       | Start the production server                      |
 | `npm run lint`        | ESLint                                           |
+| `npm test`            | Unit tests (`lib/*.test.ts`, node:test via tsx)  |
 | `npm run db:push`     | Sync the schema to the database (dev shortcut)   |
 | `npm run db:generate` | Generate a SQL migration from the schema         |
 | `npm run db:migrate`  | Apply pending migrations                         |
