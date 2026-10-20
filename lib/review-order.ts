@@ -36,3 +36,25 @@ export function orderCards<T extends { reviewLevel: number }>(
   if (order === "high") out.sort((a, b) => b.reviewLevel - a.reviewLevel);
   return out;
 }
+
+// Puts a card back into the part of the queue still to come (from `start`
+// on). In a level order it lands at the end of its level's group, so a missed
+// low-level card comes back before anything higher; in random order it goes
+// to the back.
+export function requeueCard<T extends { reviewLevel: number }>(
+  queue: T[],
+  start: number,
+  card: T,
+  order: ReviewOrder
+): T[] {
+  let at = queue.length;
+  if (order !== "random") {
+    const comesAfter = (other: T) =>
+      order === "low"
+        ? other.reviewLevel > card.reviewLevel
+        : other.reviewLevel < card.reviewLevel;
+    const i = queue.findIndex((c, j) => j >= start && comesAfter(c));
+    if (i !== -1) at = i;
+  }
+  return [...queue.slice(0, at), card, ...queue.slice(at)];
+}

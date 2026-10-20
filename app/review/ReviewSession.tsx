@@ -10,6 +10,7 @@ import {
 } from "@/lib/spaced-repetition";
 import {
   orderCards,
+  requeueCard,
   REVIEW_ORDER_LABELS,
   REVIEW_ORDERS,
   type ReviewOrder,
@@ -163,11 +164,11 @@ export function ReviewSession({
     setQueue((q) => [...q.slice(0, from), ...orderCards(q.slice(from), next)]);
   }
 
-  // Practice: a miss sends the card to the back of the queue, a hit drops it.
+  // Practice: a miss puts the card back in the queue, a hit drops it.
   function practiceAnswer(gotIt: boolean) {
     if (!revealedRef.current || !current) return;
     revealedRef.current = false;
-    if (!gotIt) setQueue((q) => [...q, current]);
+    if (!gotIt) setQueue((q) => requeueCard(q, index + 1, current, order));
     setCompleted((c) => c + 1);
     setIndex((i) => i + 1);
     setRevealed(false);
@@ -192,7 +193,9 @@ export function ReviewSession({
     // On "again", re-queue the card at its new (lowered) level so a later
     // answer in this session computes from the correct level.
     if (outcome === "again") {
-      setQueue((q) => [...q, { ...current, reviewLevel: nextLevel }]);
+      setQueue((q) =>
+        requeueCard(q, index + 1, { ...current, reviewLevel: nextLevel }, order)
+      );
     }
     setCompleted((c) => c + 1);
     setIndex((i) => i + 1);
